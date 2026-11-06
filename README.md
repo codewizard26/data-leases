@@ -51,7 +51,7 @@ Configure OpenRouter in ignored `.env` as described in [compute setup](docs/COMP
 pnpm dev
 ```
 
-Open `http://127.0.0.1:3001`. Choose a utility card, select a task and spending limit, compare agent prices, then **Authorize & run once**. The limit is visible beside the action; no separate lease screen is needed. About is at `/about`, and the older diagnostic console is under `/developer`, on the same browser address. Port3000 and old `/demo` links redirect to this dashboard. Provider processes run on4101/4102. See [payment and lease setup](docs/PAYMENTS.md).
+Open `http://127.0.0.1:3001` for the landing page, then **Open dashboard** at `/dashboard`. Choose a utility card, select a task and spending limit, compare agent prices, then **Authorize & run once**. The limit is visible beside the action; no separate lease screen is needed. About is at `/about`, and the older diagnostic console is under `/developer`, on the same browser address. Port3000 also serves the landing page; old `/demo` links redirect to `/dashboard`. Provider processes run on4101/4102. See [payment and lease setup](docs/PAYMENTS.md).
 
 ## Mock use cases and communication walkthrough
 

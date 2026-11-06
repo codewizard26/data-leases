@@ -1,6 +1,6 @@
 # Testnet payments and lease console
 
-Run Node >=22.13, pnpm10.28.1, `pnpm install`, then `pnpm dev`. The Next.js console runs at http://127.0.0.1:3001. About and developer tools are available at `/about` and `/developer` on the same browser origin. Old port3000 and `/demo` entry points redirect to the dashboard. Two separate A2A provider processes run on4101/4102. Gateway and providers bind to loopback; this is a local trusted-development deployment, not a public authenticated service.
+Run Node >=22.13, pnpm10.28.1, `pnpm install`, then `pnpm dev`. The landing page is at http://127.0.0.1:3001; **Open dashboard** takes you to `/dashboard`. About and developer tools are available at `/about` and `/developer` on the same browser origin. Port3000 also serves the landing page. Old `/demo` links redirect to `/dashboard`. Two separate A2A provider processes run on4101/4102. Gateway and providers bind to loopback; this is a local trusted-development deployment, not a public authenticated service.
 
 ## Setup
 

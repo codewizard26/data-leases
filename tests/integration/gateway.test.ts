@@ -15,12 +15,11 @@ test('health exposes mode without credentials and serves browser page', async ()
   const server = await start();
   const response = await fetch(`${server.baseUrl}/api/health`);
   expect(await response.json()).toMatchObject({status:'ok',compute:{provider:'mock'}});
-  const redirect=await fetch(server.baseUrl,{redirect:'manual'});expect(redirect.status).toBe(302);expect(redirect.headers.get('location')).toBe('http://127.0.0.1:3001/');
-  const page = await fetch(server.baseUrl+'/about');
+  const page = await fetch(server.baseUrl,{redirect:'manual'});
   expect(page.status).toBe(200); expect(page.headers.get('content-type')).toContain('text/html');
   const landing = await page.text();
   expect(landing).toContain('id="plan"');
-  expect(landing).toContain('href="http://127.0.0.1:3001"');
+  expect(landing).toContain('href="/dashboard"');
   expect(landing).not.toContain('id="negotiation-form"');
 });
 test('compute uses deterministic mock by default', async () => {
@@ -83,7 +82,7 @@ test('selected mock scenario returns correlated answer and transport details', a
 
 test('old demo redirects to the dashboard while developer tools remain accessible', async () => {
   const server = await start();
-  const redirect=await fetch(`${server.baseUrl}/demo`,{redirect:'manual'});expect(redirect.status).toBe(302);expect(redirect.headers.get('location')).toBe('http://127.0.0.1:3001/');
+  const redirect=await fetch(`${server.baseUrl}/demo`,{redirect:'manual'});expect(redirect.status).toBe(302);expect(redirect.headers.get('location')).toBe('http://127.0.0.1:3001/dashboard');
   const response = await fetch(`${server.baseUrl}/developer`);
   expect(response.status).toBe(200);
   expect(await response.text()).toContain('template-gallery');
