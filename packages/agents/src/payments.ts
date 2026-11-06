@@ -61,9 +61,9 @@ export class HederaPaywall {
   catch{record.status='UNKNOWN';this.config.journal.save(id,record);return {status:409,headers:{},body:{error:'PAYMENT_RECONCILIATION_REQUIRED',paymentStatus:'UNKNOWN'}};}
  }
 }
-export interface HederaBuyerConfig {accountId:string;privateKey:string;keyType:'ED25519'|'ECDSA';maxTinybars:string;journal:PaymentJournal}
+export interface HederaBuyerConfig {accountId:string;privateKey:string;keyType:'ED25519'|'ECDSA';maxTinybars:string;journal:PaymentJournal;authorize?:()=>void}
 export async function payHederaAnswer(input:{url:string;quote:PaymentQuote;payTo:string;config:HederaBuyerConfig}):Promise<{answer:AnswerEnvelope;payment:SettleResponse;computation?:ComputationResult}> {
- const {config,quote}=input;quoteValid(quote);account(config.accountId);account(input.payTo);if(config.accountId===input.payTo)throw new Error('BUYER_AND_PROVIDER_MUST_DIFFER');
+ const {config,quote}=input;config.authorize?.();quoteValid(quote);account(config.accountId);account(input.payTo);if(config.accountId===input.payTo)throw new Error('BUYER_AND_PROVIDER_MUST_DIFFER');
  const url=new URL(input.url);if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'||url.pathname!=='/paid-answers/'+encodeURIComponent(quote.runId)||url.username||url.password||url.search||url.hash)throw new Error('PAYMENT_RESOURCE_NOT_ALLOWED');
  const id='buyer:'+quote.runId;const prior=config.journal.get(id);if(prior){if(!exact(prior.quote,quote))throw new Error('PAYMENT_ID_CONFLICT');if(prior.status==='SETTLED'&&prior.answer&&prior.receipt)return {answer:prior.answer,payment:prior.receipt,computation:prior.computation};throw new Error('PAYMENT_RECONCILIATION_REQUIRED');}
  const response=await fetch(input.url,{redirect:'error',signal:AbortSignal.timeout(30000)});if(response.status!==402)throw new Error('EXPECTED_X402_PAYMENT_CHALLENGE');const header=response.headers.get('PAYMENT-REQUIRED');if(!header||header.length>65536)throw new Error('INVALID_X402_CHALLENGE');
@@ -71,6 +71,7 @@ export async function payHederaAnswer(input:{url:string;quote:PaymentQuote;payTo
  const required=validateHederaChallenge(challenge,quote,{resourceUrl:input.url,payTo:input.payTo,feePayer,maxAmount:config.maxTinybars});
  const balanceResponse=await fetch('https://testnet.mirrornode.hedera.com/api/v1/accounts/'+encodeURIComponent(config.accountId),{redirect:'error',signal:AbortSignal.timeout(10000)});if(!balanceResponse.ok)throw new Error('HEDERA_BALANCE_UNAVAILABLE');const balance=JSON.parse(await readLimitedText(balanceResponse,65536));if(!Number.isSafeInteger(balance.balance?.balance)||BigInt(balance.balance.balance)<BigInt(quote.priceMinor))throw new Error('INSUFFICIENT_BALANCE');
  quoteValid(quote);
+ config.authorize?.();
  const key=config.keyType==='ECDSA'?PrivateKey.fromStringECDSA(config.privateKey):PrivateKey.fromStringED25519(config.privateKey);
  const policy=JSON.stringify({domain:'data-leases:hedera-x402-spending-policy:v1',payer:config.accountId,quote,network:HEDERA_NETWORK,asset:HEDERA_ASSET,payTo:input.payTo,maxTinybars:config.maxTinybars,resourceUrl:input.url});const bytes=Buffer.from(policy);const signed=key.sign(bytes);if(!key.publicKey.verify(bytes,signed))throw new Error('SPENDING_POLICY_SIGNATURE_INVALID');
  const record:PaymentRecord={quote,payTo:input.payTo,payer:config.accountId,status:'AUTHORIZED',authorization:{policy,signature:Buffer.from(signed).toString('hex'),publicKey:key.publicKey.toString()}};config.journal.register(id,record);
@@ -79,12 +80,13 @@ export async function payHederaAnswer(input:{url:string;quote:PaymentQuote;payTo
   const scheme=new ExactHederaScheme(createClientHederaSigner(config.accountId,key,{network:HEDERA_NETWORK}));const created=await scheme.createPaymentPayload(2,required);const payload:PaymentPayload={...created,resource:challenge.resource,accepted:required};
   const transaction=payload.payload.transaction;if(typeof transaction!=='string')throw new Error('INVALID_HEDERA_TRANSACTION');const inspected=inspectHederaTransaction(transaction);record.transactionId=inspected.transactionId;
   quoteValid(quote);
+  config.authorize?.();
   record.status='SUBMITTED';config.journal.save(id,record);
   const paid=await fetch(input.url,{headers:{'PAYMENT-SIGNATURE':encodePaymentSignatureHeader(payload)},redirect:'error',signal:AbortSignal.timeout(45000)});const receiptHeader=paid.headers.get('PAYMENT-RESPONSE');if(!receiptHeader)throw new Error('PAYMENT_OUTCOME_UNKNOWN');
   const receipt=decodePaymentResponseHeader(receiptHeader);if(!receipt.success||receipt.network!==HEDERA_NETWORK||receipt.payer!==config.accountId||!receipt.transaction||(receipt.amount!==undefined&&receipt.amount!==quote.priceMinor))throw new Error('PAYMENT_RECEIPT_INVALID');
   record.receipt=receipt;record.status='SETTLED_DELIVERY_FAILED';config.journal.save(id,record);if(!paid.ok)throw new Error('PAID_DELIVERY_FAILED');
   const body=JSON.parse(await readLimitedText(paid,65536));const answer=AnswerEnvelopeSchema.parse(body.answer);if(answer.runId!==quote.runId||answer.acceptedQuoteId!==quote.quoteId)throw new Error('PAID_ANSWER_BINDING_MISMATCH');record.computation=body.computation?ComputationResultSchema.parse(body.computation):undefined;record.receipt=receipt;record.answer=answer;record.status='SETTLED';config.journal.save(id,record);return {answer,payment:receipt,computation:record.computation};
- }catch{record.status=record.receipt?'SETTLED_DELIVERY_FAILED':'UNKNOWN';config.journal.save(id,record);throw new Error(record.receipt?'PAYMENT_SETTLED_DELIVERY_FAILED':'PAYMENT_RECONCILIATION_REQUIRED');}
+ }catch(error){if(record.status!=='SUBMITTED'&&!record.receipt){record.status='NOT_SUBMITTED';config.journal.save(id,record);throw new Error(error instanceof Error&&error.message==='LEASE_EXPIRED_OR_CANCELLED'?'LEASE_EXPIRED_OR_CANCELLED':'PAYMENT_NOT_SUBMITTED');}record.status=record.receipt?'SETTLED_DELIVERY_FAILED':'UNKNOWN';config.journal.save(id,record);throw new Error(record.receipt?'PAYMENT_SETTLED_DELIVERY_FAILED':'PAYMENT_RECONCILIATION_REQUIRED');}
 }
 export function paymentDigest(quote:PaymentQuote){return createHash('sha256').update(canonical(quote)).digest('hex');}
 

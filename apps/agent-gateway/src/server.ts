@@ -1,3 +1,4 @@
+import {LeaseScheduler} from './lease-scheduler.js';
 import {EventStore} from '@data-leases/event-store';
 import {RunVerificationClient} from './run-verification.js';
 import {type ArkivClient,type VerificationClient} from '@data-leases/contracts';
@@ -87,8 +88,10 @@ export async function startGateway(options: GatewayOptions = {}) {
   const verificationClient=options.verificationClient??new RunVerificationClient();
   const orchestrator=new RunOrchestrator({store:eventStore,leases:leaseStore,providers:providers.map((p,i)=>({...p,payTo:getPaymentSetup().providerAccounts[i]??''})),verification:verificationClient,arkiv:options.arkivClient,paymentReady:()=>getPaymentSetup().ready,paymentRecord:runId=>buyerJournal?.get('buyer:'+runId),payment:async input=>{
     const setup=getPaymentSetup();if(!setup.ready)throw new Error('PAYMENT_SETUP_REQUIRED');buyerJournal??=new PaymentJournal(resolve(directory,'buyer.sqlite'));
-    return payHederaAnswer({...input,config:{accountId:process.env.HEDERA_BUYER_ACCOUNT_ID!,privateKey:process.env.HEDERA_BUYER_PRIVATE_KEY!,keyType:process.env.HEDERA_BUYER_KEY_TYPE as 'ECDSA'|'ED25519',maxTinybars:setup.maxTinybars!,journal:buyerJournal}});
+    return payHederaAnswer({...input,config:{accountId:process.env.HEDERA_BUYER_ACCOUNT_ID!,privateKey:process.env.HEDERA_BUYER_PRIVATE_KEY!,keyType:process.env.HEDERA_BUYER_KEY_TYPE as 'ECDSA'|'ED25519',maxTinybars:setup.maxTinybars!,journal:buyerJournal,authorize:()=>{const run=leaseStore.run(input.quote.runId) as {leaseId:string}|undefined;if(!run)throw new Error('LEASE_EXPIRED_OR_CANCELLED');const lease=leaseStore.get(run.leaseId);if(!lease.active||Date.parse(lease.policy.expiresAt)<=Date.now())throw new Error('LEASE_EXPIRED_OR_CANCELLED');}}});
   }});
+  const scheduleEvent=(leaseId:string,status:string,payload:unknown)=>{eventStore.append({schemaVersion:'1.0.0',eventId:randomUUID(),sessionId:leaseId,occurredAt:new Date().toISOString(),eventType:'NEGOTIATION_OUTCOME',actorRole:'GATEWAY',actorId:'lease-scheduler',direction:'INTERNAL',status,payload:{leaseId,...(typeof payload==='object'&&payload!==null?payload:{})}});void eventStore.flush().catch(()=>{});};
+  const scheduler=new LeaseScheduler({leases:leaseStore,runner:orchestrator,ready:()=>getPaymentSetup().ready,event:scheduleEvent});
   let baseUrl = '';
   let computeInFlight = false;
   let negotiationInFlight = false;
@@ -100,6 +103,7 @@ export async function startGateway(options: GatewayOptions = {}) {
     const path = new URL(request.url ?? '/', baseUrl).pathname;
     if(request.method==='GET'&&path==='/api/runs'){json(response,200,{runs:orchestrator.history(),sessions:eventStore.sessions()});return;}
     if(request.method==='GET'&&path.startsWith('/api/runs/')){const id=path.slice('/api/runs/'.length);const run=orchestrator.get(id);if(!run)throw new RequestError(404,'RUN_NOT_FOUND');json(response,200,run);return;}
+    if(request.method==='GET'&&path==='/api/leases'){json(response,200,{leases:leaseStore.schedules().map(row=>({...row,...leaseStore.get(row.leaseId)}))});return;}
     if(request.method==='GET'&&path.startsWith('/api/leases/')){try{json(response,200,leaseStore.get(path.slice('/api/leases/'.length)));}catch{throw new RequestError(404,'LEASE_NOT_FOUND');}return;}
     const feed=path.match(/^\/api\/sessions\/([a-zA-Z0-9-]+)\/events$/);
     if(request.method==='GET'&&feed){const sessionId=feed[1]!;const cursor=new URL(request.url!,baseUrl).searchParams.get('after')??request.headers['last-event-id']??'0';if(typeof cursor!=='string'||!/^\d{1,12}$/.test(cursor))throw new RequestError(400,'INVALID_CURSOR');let sequence=Number(cursor);
@@ -131,7 +135,7 @@ export async function startGateway(options: GatewayOptions = {}) {
       response.writeHead(200, {'Content-Type':'text/html; charset=utf-8', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'Content-Security-Policy':"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"});
       response.end(html); return;
     }
-    if (request.method !== 'POST' || !['/api/negotiate', '/api/compute', '/api/cre/simulate','/api/quotes','/api/payments/checkout','/api/discovery','/api/leases','/api/leases/cancel','/api/runs','/api/runs/refresh','/api/runs/publication','/api/payments/reconcile','/api/preview'].includes(path)) throw new RequestError(404, 'NOT_FOUND');
+    if (request.method !== 'POST' || !['/api/negotiate', '/api/compute', '/api/cre/simulate','/api/quotes','/api/payments/checkout','/api/discovery','/api/leases','/api/leases/cancel','/api/leases/control','/api/runs','/api/runs/refresh','/api/runs/publication','/api/payments/reconcile','/api/preview'].includes(path)) throw new RequestError(404, 'NOT_FOUND');
     const origin = request.headers.origin;
     if (origin !== undefined && origin !== baseUrl && origin !== baseUrl.replace('127.0.0.1','localhost') && origin!=='http://127.0.0.1:3001' && origin!=='http://localhost:3001') throw new RequestError(403, 'ORIGIN_NOT_ALLOWED');
     const body = await readBody(request);
@@ -142,7 +146,8 @@ export async function startGateway(options: GatewayOptions = {}) {
       try{json(response,202,orchestrator.preview(Object.fromEntries(Object.entries(body).filter(([key])=>!['providerIds','maxRounds'].includes(key))),body.providerIds as string[]|undefined,body.maxRounds as number|undefined));}catch{throw new RequestError(400,'INVALID_PREVIEW');}return;
     }
     if(path==='/api/discovery'){try{json(response,200,{providers:await orchestrator.discover(body),arkivAvailable:Boolean(options.arkivClient)});}catch(error){throw new RequestError(400,error instanceof Error&&error.message==='ARKIV_NOT_CONFIGURED'?'ARKIV_NOT_CONFIGURED':'DISCOVERY_FAILED');}return;}
-    if(path==='/api/leases'){const parsed=LeasePolicySchema.safeParse(body);if(!parsed.success)throw new RequestError(400,'INVALID_LEASE_POLICY');if(!DEMO_SCENARIOS.some(s=>s.questionTemplateId===parsed.data.questionTemplateId))throw new RequestError(400,'INVALID_QUESTION_TEMPLATE');const cap=getPaymentSetup().maxTinybars;if(!cap||BigInt(parsed.data.perRequestTinybars)>BigInt(cap))throw new RequestError(400,'OPERATOR_CAP_EXCEEDED');try{json(response,201,leaseStore.authorize(parsed.data));}catch{throw new RequestError(400,'INVALID_LEASE_POLICY');}return;}
+    if(path==='/api/leases'){const parsed=LeasePolicySchema.safeParse(body);if(!parsed.success)throw new RequestError(400,'INVALID_LEASE_POLICY');if(!DEMO_SCENARIOS.some(s=>s.questionTemplateId===parsed.data.questionTemplateId))throw new RequestError(400,'INVALID_QUESTION_TEMPLATE');const cap=getPaymentSetup().maxTinybars;if(!cap||BigInt(parsed.data.perRequestTinybars)>BigInt(cap))throw new RequestError(400,'OPERATOR_CAP_EXCEEDED');let authorizedId:string|undefined;try{const lease=leaseStore.authorize(parsed.data);authorizedId=lease.policy.leaseId;scheduleEvent(lease.policy.leaseId,lease.policy.schedule?'RECURRING_LEASE_AUTHORIZED':'LEASE_AUTHORIZED',{policy:lease.policy});json(response,201,lease);}catch{if(authorizedId){leaseStore.cancel(authorizedId);throw new RequestError(503,'LEASE_AUTHORIZATION_AUDIT_FAILED');}throw new RequestError(400,'INVALID_LEASE_POLICY');}return;}
+    if(path==='/api/leases/control'){if(Object.keys(body).some(key=>!['leaseId','action'].includes(key))||typeof body.leaseId!=='string'||!['PAUSE','RESUME','CANCEL'].includes(String(body.action)))throw new RequestError(400,'INVALID_LEASE_ACTION');try{leaseStore.controlSchedule(body.leaseId,body.action as 'PAUSE'|'RESUME'|'CANCEL');scheduleEvent(body.leaseId,'LEASE_'+body.action,{});json(response,200,{status:leaseStore.schedule(body.leaseId)?.state});}catch(error){throw new RequestError(409,error instanceof Error&&/^[A-Z_]+$/.test(error.message)?error.message:'LEASE_CONTROL_FAILED');}return;}
     if(path==='/api/leases/cancel'){if(typeof body.leaseId!=='string')throw new RequestError(400,'INVALID_LEASE');leaseStore.cancel(body.leaseId);json(response,200,{status:'CANCELLED'});return;}
     if(path==='/api/runs'){const input=RunInputSchema.safeParse(body);if(!input.success)throw new RequestError(400,'INVALID_RUN');try{json(response,202,orchestrator.start(input.data));}catch{throw new RequestError(409,'RUN_NOT_STARTED');}return;}
     if(path==='/api/runs/refresh'||path==='/api/runs/publication'){if(typeof body.runId!=='string')throw new RequestError(400,'INVALID_RUN');try{const result=path.endsWith('refresh')?await orchestrator.refreshVerification(body.runId):await orchestrator.retryPublication(body.runId);json(response,200,result);}catch{throw new RequestError(409,'RUN_RETRY_UNAVAILABLE');}return;}
@@ -249,5 +254,6 @@ export async function startGateway(options: GatewayOptions = {}) {
   server.headersTimeout = 10_000;
   await new Promise<void>((resolve, reject) => { server.once('error',reject);server.listen(options.port ?? 3000,'127.0.0.1',resolve); });
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return {baseUrl, close: () => new Promise<void>((resolve, reject) => {server.close(error => {void orchestrator.drain().then(()=>verificationClient instanceof RunVerificationClient?verificationClient.close():undefined).then(()=>eventStore.close()).then(()=>{leaseStore.close();buyerJournal?.close();if(error)reject(error);else resolve();},reject);});server.closeAllConnections();})};
+  scheduler.start();
+  return {baseUrl, close: () => new Promise<void>((resolve, reject) => {server.close(error => {void scheduler.close().then(()=>orchestrator.drain()).then(()=>verificationClient instanceof RunVerificationClient?verificationClient.close():undefined).then(()=>eventStore.close()).then(()=>{leaseStore.close();buyerJournal?.close();if(error)reject(error);else resolve();},reject);});server.closeAllConnections();})};
 }

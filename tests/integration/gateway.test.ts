@@ -160,3 +160,10 @@ test('utility quotes arrive without charging and checkout stays blocked until ex
   const checkout=await fetch(server.baseUrl+'/api/payments/checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quoteId:data.results[0].quoteId,approvedAmountTinybars:'2000'})});expect(checkout.status).toBe(503);expect(await checkout.json()).toEqual({error:'PAYMENT_SETUP_REQUIRED'});
   const setup=await fetch(server.baseUrl+'/api/payments/setup').then(r=>r.json());expect(JSON.stringify(setup)).not.toContain('PRIVATE_KEY=');expect(setup.missing).toContain('HEDERA_MAX_PAYMENT_TINYBARS');
 });
+
+test('recurring lease settings persist and can be paused or cancelled without enabling payment',async()=>{
+ vi.stubEnv('HEDERA_MAX_PAYMENT_TINYBARS','5000');vi.stubEnv('PAYMENTS_ENABLED','false');const server=await start();const leaseId=crypto.randomUUID();
+ const response=await fetch(server.baseUrl+'/api/leases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({leaseId,questionTemplateId:'ERC20_TOKEN_METADATA',currency:'hedera:testnet/HBAR',providerIds:['provider-a'],perRequestTinybars:'500',totalTinybars:'2000',expiresAt:new Date(Date.now()+3600000).toISOString(),maxAgeSeconds:60,maxRounds:3,schedule:{intervalSeconds:300,mode:'LOCAL_REGISTRY'}})});
+ expect(response.status).toBe(201);const listing=await (await fetch(server.baseUrl+'/api/leases')).json();expect(listing.leases[0]).toMatchObject({leaseId,state:'ACTIVE',remainingTinybars:'2000',policy:{schedule:{intervalSeconds:300}}});
+ for(const [action,state] of [['PAUSE','PAUSED'],['CANCEL','CANCELLED']]){const result=await fetch(server.baseUrl+'/api/leases/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({leaseId,action})});expect(await result.json()).toEqual({status:state});}
+});

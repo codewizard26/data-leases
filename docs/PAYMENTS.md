@@ -38,3 +38,11 @@ The simplified console uses three explanatory utility cards, a request form and 
 Next.js compression is disabled because gzip buffering otherwise delays the proxied SSE stream. Durable event IDs support reconnection and replay.
 
 Official scheme reference: https://github.com/x402-foundation/x402/blob/main/specs/schemes/exact/scheme_exact_hedera.md. Runtime support is checked against the facilitator rather than assumed from this link.
+
+## Recurring leases
+
+At `/dashboard`, choose **Recurring lease**, then set **Run every** (minutes), **End lease at**, **Maximum price per run**, and **Total lease budget**. Compare agent prices, then explicitly select **Authorize recurring lease**. Quotes and card selection never start a schedule. Recurring settings are included in the signed policy. One-time execution remains available.
+
+The gateway must be running for scheduled work. Durable SQLite state restores schedules after restart; missed intervals are skipped. Each occurrence calls the existing discovery, negotiation and Hedera x402 flow with a distinct persisted run ID. Runs share the lease's total budget, including uncertain payments. Unknown outcomes pause recurrence until reconciled. Pause, resume and cancel are available under **Your recurring leases**, together with the next occurrence and remaining budget. A submitted transfer may still settle after pausing. Expiry and exhausted budgets stop future occurrences. This is application-scheduled x402 payment, not a native onchain subscription or Hedera Schedule Service transfer.
+
+Discovery results are compact cards with the live agent name, capability, price, round, source and response. The landing page is unchanged. Tests use injected payment adapters; no live recurring lease has been started by the assistant.

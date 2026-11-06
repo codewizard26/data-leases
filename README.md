@@ -86,3 +86,5 @@ Each negotiation can make multiple inference requests and consume the free provi
 Open the LINK decimals workspace and use **Run CRE simulation**. Choose a valid value, tampered value, or block mismatch. The backend prepares a fresh dedicated LINK verification job, invokes the authenticated local CRE CLI, validates its artifact, and returns only the public result. No CLI commands or credentials are required in the browser. One simulation runs at a time, with bounded execution and status polling.
 
 This panel is separate from the selected negotiation mode and from its synthetic answer. Successful output is labeled `CRE_CLI_SIMULATION`, never DON deployment or fresh verification of an unrelated negotiation receipt. CRE CLI/Bun and local authentication must exist on the server.
+
+Recurring execution: choose **Recurring lease** on `/dashboard` to set frequency, expiry, per-run cap and total budget. Discovered agents appear as compact cards. See [recurring lease behavior and safeguards](docs/RECURRING_LEASES.md). Schedules start only after explicit authorization.
