@@ -1,11 +1,15 @@
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { startProvider } from '../../packages/agents/src/index.js';
 import * as agents from '../../packages/agents/src/index.js';
 import { MockVerificationClient } from '../../packages/cre-adapter/src/index.js';
 import * as gateway from '../../apps/agent-gateway/src/server.js';
 const cleanup: Array<() => Promise<void>> = [];
-beforeEach(() => { vi.stubEnv('COMPUTE_PROVIDER', 'mock'); });
-afterEach(async () => { await Promise.all(cleanup.splice(0).map(close => close())); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+let testDirectory='';
+beforeEach(async () => {testDirectory=await mkdtemp(join(tmpdir(),'gateway-test-'));vi.stubEnv('DATA_DIRECTORY',testDirectory);vi.stubEnv('COMPUTE_PROVIDER', 'mock'); });
+afterEach(async () => { await Promise.all(cleanup.splice(0).map(close => close())); vi.unstubAllEnvs(); vi.restoreAllMocks();await rm(testDirectory,{recursive:true,force:true}); });
 async function start() { const server = await gateway.startGateway({port: 0}); cleanup.push(server.close); return server; }
 test('health exposes mode without credentials and serves browser page', async () => {
   const server = await start();
@@ -15,7 +19,7 @@ test('health exposes mode without credentials and serves browser page', async ()
   expect(page.status).toBe(200); expect(page.headers.get('content-type')).toContain('text/html');
   const landing = await page.text();
   expect(landing).toContain('id="plan"');
-  expect(landing).toContain('href="/demo"');
+  expect(landing).toContain('href="http://127.0.0.1:3001"');
   expect(landing).not.toContain('id="negotiation-form"');
 });
 test('compute uses deterministic mock by default', async () => {
@@ -50,12 +54,12 @@ test.each([['COMPUTE_HTTP_429',429,'COMPUTE_RATE_LIMITED'],['COMPUTE_HTTP_401',5
   expect(response.status).toBe(status); expect(await response.json()).toEqual({error:code});
 });
 
-test('templates expose four explicit mock use cases', async () => {
+test('templates expose read and simulated write use cases', async () => {
   const server = await start();
   const response = await fetch(`${server.baseUrl}/api/templates`);
   expect(response.status).toBe(200);
   const body = await response.json();
-  expect(body.templates.map((item: {id: string}) => item.id)).toEqual(['aave-usdc-liquidity','aave-usdc-utilization','dao-treasury-risk','link-token-decimals']);
+  expect(body.templates.map((item: {id: string}) => item.id)).toEqual(['aave-usdc-liquidity','aave-usdc-utilization','dao-treasury-risk','link-token-decimals','write-link-report','ai-link-explanation']);
   expect(body.templates.every((item: {demoTrustMode: string}) => item.demoTrustMode === 'UNTRUSTED_MOCK')).toBe(true);
 });
 test('rejects unknown question template before contacting providers', async () => {
@@ -129,4 +133,29 @@ test('MOCK mode makes no inference calls even when live compute is configured', 
   const server=await gateway.startGateway({port:0,providerOrigins:[a.baseUrl,b.baseUrl]});cleanup.push(server.close);
   const response=await fetch(server.baseUrl+'/api/negotiate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'MOCK',maxPriceMinor:'350'})});
   expect(response.status).toBe(200);const data=await response.json();expect(data.results[0]).toMatchObject({status:'AGREED',negotiationMode:'MOCK'});expect(adapter).not.toHaveBeenCalled();
+});
+
+test('UI can start and poll a bounded CRE simulation job', async () => {
+  const job = {jobId:'job-1',case:'valid' as const,createdAt:new Date().toISOString(),state:'RUNNING' as const};
+  const runner = {start:(input: string)=>{expect(input).toBe('valid');return {jobId:job.jobId,state:'RUNNING' as const};},get:(id: string)=>id===job.jobId?job:null};
+  const server=await gateway.startGateway({port:0,creRunner:runner});cleanup.push(server.close);
+  const response=await fetch(server.baseUrl+'/api/cre/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:'valid'})});
+  expect(response.status).toBe(202);expect(await response.json()).toMatchObject({jobId:'job-1',state:'RUNNING'});
+  const poll=await fetch(server.baseUrl+'/api/cre/jobs/job-1');expect(poll.status).toBe(200);expect(await poll.json()).toEqual(job);
+  const invalid=await fetch(server.baseUrl+'/api/cre/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case:'arbitrary-command'})});expect(invalid.status).toBe(400);
+  const foreign=await fetch(server.baseUrl+'/api/cre/simulate',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://evil.example'},body:JSON.stringify({case:'valid'})});expect(foreign.status).toBe(403);
+});
+
+test('utility quotes arrive without charging and checkout stays blocked until explicit setup',async()=>{
+  const {PaymentJournal}=await import('../../packages/agents/src/index.js');
+  vi.stubEnv('HEDERA_PROVIDER_A_ACCOUNT_ID','0.0.123');vi.stubEnv('HEDERA_PROVIDER_B_ACCOUNT_ID','0.0.124');vi.stubEnv('PAYMENTS_ENABLED','false');vi.stubEnv('HEDERA_MAX_PAYMENT_TINYBARS','');
+  const aJournal=new PaymentJournal(':memory:'),bJournal=new PaymentJournal(':memory:');
+  const a=await startProvider({port:0,providerId:'provider-a',askMinor:'500',floorMinor:'300',payment:{payTo:'0.0.123',journal:aJournal}});
+  const b=await startProvider({port:0,providerId:'provider-b',askMinor:'700',floorMinor:'400',payment:{payTo:'0.0.124',journal:bJournal}});
+  cleanup.push(async()=>{await a.close();aJournal.close();},async()=>{await b.close();bJournal.close();});
+  const server=await gateway.startGateway({port:0,providerOrigins:[a.baseUrl,b.baseUrl]});cleanup.push(server.close);
+  const response=await fetch(server.baseUrl+'/api/quotes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({questionTemplateId:'SIMULATED_LINK_REPORT_WRITE'})});
+  expect(response.status).toBe(200);const data=await response.json();expect(data.paymentReady).toBe(false);expect(data.results).toMatchObject([{providerId:'provider-a',operation:'WRITE',amountTinybars:'2000',payTo:'0.0.123'},{providerId:'provider-b',operation:'WRITE',amountTinybars:'2800',payTo:'0.0.124'}]);
+  const checkout=await fetch(server.baseUrl+'/api/payments/checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quoteId:data.results[0].quoteId,approvedAmountTinybars:'2000'})});expect(checkout.status).toBe(503);expect(await checkout.json()).toEqual({error:'PAYMENT_SETUP_REQUIRED'});
+  const setup=await fetch(server.baseUrl+'/api/payments/setup').then(r=>r.json());expect(JSON.stringify(setup)).not.toContain('PRIVATE_KEY=');expect(setup.missing).toContain('HEDERA_MAX_PAYMENT_TINYBARS');
 });

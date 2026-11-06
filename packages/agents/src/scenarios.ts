@@ -1,6 +1,7 @@
 /** Synthetic examples based on the product roadmap, never observations of chain state. */
 export const DEMO_SCENARIOS = [
   {
+    operation: 'READ',
     id: 'aave-usdc-liquidity', title: 'Aave V3 · USDC available liquidity',
     description: 'Synthetic Ethereum lending reserve example from the product specification. No RPC or live Aave source is queried.',
     questionTemplateId: 'AAVE_V3_USDC_AVAILABLE_LIQUIDITY', metric: 'aave_v3.usdc.available_liquidity',
@@ -9,6 +10,7 @@ export const DEMO_SCENARIOS = [
     chainId: 'eip155:1', evidencePolicyId: 'demo-policy-v1', demoTrustMode: 'UNTRUSTED_MOCK', synthetic: true,
   },
   {
+    operation: 'READ',
     id: 'aave-usdc-utilization', title: 'Aave V3 · USDC reserve utilization',
     description: 'Synthetic reserve utilization example from the product specification. 6,750 basis points represents an illustrative 67.5 percent.',
     questionTemplateId: 'AAVE_V3_USDC_RESERVE_UTILIZATION', metric: 'aave_v3.usdc.reserve_utilization',
@@ -17,6 +19,7 @@ export const DEMO_SCENARIOS = [
     chainId: 'eip155:1', evidencePolicyId: 'demo-policy-v1', demoTrustMode: 'UNTRUSTED_MOCK', synthetic: true,
   },
   {
+    operation: 'READ',
     id: 'dao-treasury-risk', title: 'DAO treasury · illustrative risk snapshot',
     description: 'Illustrative extension of the roadmap treasury-monitoring persona. Synthetic score with no validated financial methodology; not investment advice or a verified risk metric.',
     questionTemplateId: 'DAO_TREASURY_RISK_SNAPSHOT', metric: 'demo.dao_treasury.risk_score',
@@ -25,12 +28,26 @@ export const DEMO_SCENARIOS = [
     chainId: 'eip155:1', evidencePolicyId: 'demo-policy-v1', demoTrustMode: 'UNTRUSTED_MOCK', synthetic: true,
   },
   {
+    operation: 'READ',
     id: 'link-token-decimals', title: 'LINK token · ERC-20 decimals',
     description: 'Synthetic LINK metadata answer for the CRE proof policy. No chain state or reference block is read by this provider; verification remains separate.',
     questionTemplateId: 'ERC20_TOKEN_METADATA', metric: 'ERC20_DECIMALS',
     unit: 'decimal-places', value: '18',
     methodologyVersion: 'link-decimals-v1', sourceContract: '0x514910771af9ca656af840dff83e8264ecf986ca',
     chainId: 'eip155:1', evidencePolicyId: 'link-decimals-v1', demoTrustMode: 'UNTRUSTED_MOCK', synthetic: true,
+  },
+  {
+    operation:'WRITE',id:'write-link-report',title:'Write · LINK verification report',
+    description:'Simulated report-writing utility. Higher posted rate than a read. No external API, onchain write, or durable report is created in this prototype.',
+    questionTemplateId:'SIMULATED_LINK_REPORT_WRITE',metric:'demo.link_report.simulated_writes',unit:'SIMULATED_REPORTS',value:'1',
+    chainId:'eip155:1',evidencePolicyId:'demo-policy-v1',demoTrustMode:'UNTRUSTED_MOCK',synthetic:true,methodologyVersion:'demo-report-write-v1',sourceContract:undefined,
+  },
+  {
+    operation:'COMPUTE',id:'ai-link-explanation',title:'AI · explain LINK token decimals',
+    description:'On-demand AI report from the selected provider’s configured model. Public fixed prompt; generated explanation is not independently verified financial data.',
+    questionTemplateId:'AI_LINK_EXPLANATION',metric:'demo.ai_report.generated_count',unit:'GENERATED_REPORTS',value:'1',
+    computationPrompt:'Explain what ERC-20 token decimals mean, using LINK with 18 decimal places as a clearly stated illustrative input. Give one exact raw-unit example and explain why decimals are not a token price. Limit the answer to 120 words. Do not claim to have queried a blockchain or verified live data.',
+    chainId:'eip155:1',evidencePolicyId:'demo-policy-v1',demoTrustMode:'UNTRUSTED_MOCK',synthetic:true,methodologyVersion:'ai-explanation-v1',sourceContract:undefined,
   },
 ] as const;
 export type DemoScenario = (typeof DEMO_SCENARIOS)[number];
