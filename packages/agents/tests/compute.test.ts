@@ -84,3 +84,24 @@ describe('OpenRouter free compute', () => {
     await expect(new OpenRouterComputeAdapter({ apiKey: 'key' }, async () => new Response('x'.repeat(65537))).generate(input)).rejects.toThrow('COMPUTE_RESPONSE_TOO_LARGE');
   });
 });
+test('OpenRouter JSON mode requests structured content without hidden reasoning', async () => {
+ let body: Record<string, unknown> | undefined;
+ const adapter = new OpenRouterComputeAdapter({ apiKey: 'key', model: 'liquid/lfm-2.5-2.6b:free' }, async (_url, init) => {
+  body = JSON.parse(String(init?.body));
+  return Response.json({ choices: [{ message: { content: '{"action":"REJECT","reason":"No agreement."}' } }] });
+ });
+ await adapter.generate({ ...input, jsonMode: true });
+ expect(body?.response_format).toEqual({ type: 'json_object' });
+ expect(body?.reasoning).toEqual({ exclude: true });
+ expect(body?.max_tokens).toBe(2048);
+});
+test('0G JSON mode requests structured content without OpenRouter reasoning parameter', async () => {
+ let body: Record<string, unknown> | undefined;
+ const adapter = new ZeroGComputeAdapter(options, async (_url, init) => {
+  body = JSON.parse(String(init?.body));
+  return Response.json({ choices: [{ message: { content: '{}' } }] });
+ });
+ await adapter.generate({ ...input, jsonMode: true });
+ expect(body?.response_format).toEqual({ type: 'json_object' });
+ expect(body?.reasoning).toBeUndefined();
+});

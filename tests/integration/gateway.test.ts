@@ -110,3 +110,23 @@ test('verification adapter failure preserves delivered answer as inconclusive', 
   expect(body.results[0]).toMatchObject({status:'AGREED',answer:{value:'18'},verification:{executionMode:'MOCK',status:'INCONCLUSIVE',checks:[{checkId:'VERIFICATION_ADAPTER_AVAILABLE',status:'UNKNOWN',reasonCode:'ADAPTER_UNAVAILABLE'}]}});
   expect(JSON.stringify(body)).not.toContain('upstream private detail');
 });
+
+test('AI negotiation fails closed when a real compute provider is not configured', async () => {
+  vi.stubEnv('NEGOTIATION_MODE','ai');
+  vi.stubEnv('COMPUTE_PROVIDER','openrouter');
+  vi.stubEnv('OPENROUTER_API_KEY','');
+  const server = await start();
+  const response = await fetch(`${server.baseUrl}/api/negotiate`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({maxPriceMinor:'350',mode:'LIVE'})});
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({error:'AI_NEGOTIATION_NOT_CONFIGURED'});
+});
+
+test('MOCK mode makes no inference calls even when live compute is configured', async () => {
+  vi.stubEnv('COMPUTE_PROVIDER','openrouter');vi.stubEnv('OPENROUTER_API_KEY','not-used');
+  const adapter = vi.spyOn(agents,'createComputeAdapter').mockImplementation(()=>{throw new Error('MOCK_MUST_NOT_CREATE_COMPUTE');});
+  const a=await startProvider({port:0,providerId:'provider-a',askMinor:'500',floorMinor:'300'});
+  const b=await startProvider({port:0,providerId:'provider-b',askMinor:'600',floorMinor:'500'});cleanup.push(a.close,b.close);
+  const server=await gateway.startGateway({port:0,providerOrigins:[a.baseUrl,b.baseUrl]});cleanup.push(server.close);
+  const response=await fetch(server.baseUrl+'/api/negotiate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'MOCK',maxPriceMinor:'350'})});
+  expect(response.status).toBe(200);const data=await response.json();expect(data.results[0]).toMatchObject({status:'AGREED',negotiationMode:'MOCK'});expect(adapter).not.toHaveBeenCalled();
+});

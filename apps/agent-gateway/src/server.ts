@@ -4,7 +4,7 @@ import { VerificationRequestSchema, VerificationResultSchema, type AnswerEnvelop
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
-import { createComputeAdapter, negotiate, DEMO_SCENARIOS, QUESTION_TEMPLATE } from '@data-leases/agents';
+import { createComputeAdapter, AiNegotiationStrategy, negotiate, DEMO_SCENARIOS, QUESTION_TEMPLATE } from '@data-leases/agents';
 
 export interface GatewayOptions {
   port?: number;
@@ -66,6 +66,7 @@ export async function startGateway(options: GatewayOptions = {}) {
   const providers = origins.map((origin, index) => ({providerId: index === 0 ? 'provider-a' : 'provider-b', origin: localOrigin(origin)}));
   let baseUrl = '';
   let computeInFlight = false;
+  let negotiationInFlight = false;
   const handler = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     response.setHeader('Connection', 'close');
     const authority = new URL(baseUrl).host;
@@ -75,7 +76,7 @@ export async function startGateway(options: GatewayOptions = {}) {
     if (request.method === 'GET' && path === '/api/health') {
       const provider = process.env.COMPUTE_PROVIDER ?? 'mock';
       const model = provider === 'mock' ? 'deterministic' : provider === 'openrouter' ? (process.env.OPENROUTER_MODEL ?? 'openrouter/free') : (process.env.ZERO_G_MODEL ?? 'not-configured');
-      json(response, 200, {status:'ok', compute:{provider: ['0g', 'mock', 'openrouter'].includes(provider) ? provider : 'unsupported', model: /^[a-zA-Z0-9._:/-]{1,100}$/.test(model) ? model : 'configured'}, providers});
+      json(response, 200, {status:'ok', negotiation:{mode:'MOCK',liveAvailable:['openrouter','0g'].includes(provider)&&Boolean(provider==='openrouter'?process.env.OPENROUTER_API_KEY:process.env.ZERO_G_API_KEY),provider,model,maxDurationSeconds:180}, compute:{provider: ['0g', 'mock', 'openrouter'].includes(provider) ? provider : 'unsupported', model: /^[a-zA-Z0-9._:/-]{1,100}$/.test(model) ? model : 'configured'}, providers});
       return;
     }
     if (request.method === 'GET' && path === '/api/templates') {
@@ -91,20 +92,31 @@ export async function startGateway(options: GatewayOptions = {}) {
     if (origin !== undefined && origin !== baseUrl && origin !== baseUrl.replace('127.0.0.1','localhost')) throw new RequestError(403, 'ORIGIN_NOT_ALLOWED');
     const body = await readBody(request);
     if (path === '/api/negotiate') {
-      if (Object.keys(body).some(key => !['maxPriceMinor','questionTemplateId'].includes(key)) || typeof body.maxPriceMinor !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(body.maxPriceMinor)) throw new RequestError(400, 'INVALID_PRICE');
+      if (negotiationInFlight) throw new RequestError(429,'NEGOTIATION_BUSY');
+      if (Object.keys(body).some(key => !['maxPriceMinor','questionTemplateId','mode'].includes(key)) || typeof body.maxPriceMinor !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(body.maxPriceMinor)) throw new RequestError(400, 'INVALID_PRICE');
       const questionTemplateId = body.questionTemplateId === undefined ? QUESTION_TEMPLATE : body.questionTemplateId;
       if (typeof questionTemplateId !== 'string' || (questionTemplateId !== QUESTION_TEMPLATE && !DEMO_SCENARIOS.some(item => item.questionTemplateId === questionTemplateId))) throw new RequestError(400, 'INVALID_QUESTION_TEMPLATE');
+      const mode = body.mode ?? 'MOCK';
+      if (mode !== 'MOCK' && mode !== 'LIVE') throw new RequestError(400,'INVALID_NEGOTIATION_MODE');
+      let strategy: AiNegotiationStrategy | undefined;
+      if (mode === 'LIVE') {
+        if (!['openrouter','0g'].includes(process.env.COMPUTE_PROVIDER ?? '')) throw new RequestError(503,'AI_NEGOTIATION_NOT_CONFIGURED');
+        try { strategy = new AiNegotiationStrategy(createComputeAdapter()); } catch { throw new RequestError(503,'AI_NEGOTIATION_NOT_CONFIGURED'); }
+      }
       const maxPriceMinor = body.maxPriceMinor;
+      negotiationInFlight = true;
+      try {
       const results = await Promise.all(providers.map(async provider => {
         const connection = {providerId:provider.providerId, cardUrl:`${provider.origin}/.well-known/agent-card.json`, a2aEndpoint:`${provider.origin}/a2a`, protocol:'A2A 1.0 JSONRPC', discoverySource:'LOCAL_REGISTRY'};
         try {
-          const result = await negotiate({baseUrl:provider.origin, providerId:provider.providerId, maxPriceMinor, questionTemplateId});
+          const result = await negotiate({baseUrl:provider.origin, providerId:provider.providerId, maxPriceMinor, questionTemplateId, strategy, mode});
           const verification = result.answer ? await verifyDeliveredAnswer(result.answer) : undefined;
-          return {...connection, ...result, ...(verification ? {verification} : {}), stages:{discovery:'DISCOVERED', negotiation:result.status, answer:result.answer ? 'DELIVERED_UNVERIFIED' : 'NOT_REQUESTED', verification:verification ? `${verification.executionMode}:${verification.status}` : 'NOT_REQUESTED', payment:'DISABLED'}};
+          return {...connection, ...result, negotiationMode:mode, ...(verification ? {verification} : {}), stages:{discovery:'DISCOVERED', negotiation:result.status, answer:result.answer ? 'DELIVERED_UNVERIFIED' : 'NOT_REQUESTED', verification:verification ? `${verification.executionMode}:${verification.status}` : 'NOT_REQUESTED', payment:'DISABLED'}};
         }
         catch { return {...connection, status:'FAILED', error:'NEGOTIATION_FAILED', transcript:[], stages:{discovery:'UNKNOWN', negotiation:'FAILED', answer:'NOT_REQUESTED', verification:'NOT_REQUESTED', payment:'DISABLED'}}; }
       }));
       json(response, 200, {results}); return;
+      } finally { negotiationInFlight = false; }
     }
     if (Object.keys(body).length !== 1 || typeof body.prompt !== 'string' || !body.prompt.trim() || body.prompt.length > 4000) throw new RequestError(400, 'INVALID_PROMPT');
     if (computeInFlight) throw new RequestError(429, 'COMPUTE_BUSY');

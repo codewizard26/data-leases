@@ -72,3 +72,9 @@ The teammate CRE branch was reviewed without merging. See [integration review](d
 The fourth question card negotiates LINK token decimals (`ERC20_TOKEN_METADATA`, `link-decimals-v1`). The synthetic answer is 18 decimal places and identifies the LINK contract, without fabricating a block reference. Gateway verification uses the shared `MockVerificationClient`; missing independent evidence returns `MOCK / INCONCLUSIVE`. Unsupported Aave/treasury methods also remain inconclusive. Expand the receipt to inspect individual checks.
 
 All teammate CRE workflow, tooling and saved simulation evidence are included. See [CRE handoff](docs/CRE_HANDOFF.md) for Bun/CLI installation, authentication and fresh simulation reproduction. Recorded CLI results are historical evidence, not verification of a fresh buyer run.
+
+## Model-driven price negotiation
+
+Configure a real compute provider, run `pnpm dev`, and select **Live mode** in the workspace. **Mock mode** is the default and makes no negotiation inference calls. Buyer and seller use separate model prompts in separate processes to propose price actions; integer-budget, seller-floor, round and deadline guards remain authoritative. Model failures do not silently fall back to scripted agreement. The receipt identifies actual model decisions and public explanations by message ID.
+
+Each negotiation can make multiple inference requests and consume the free provider quota. Only one negotiation run is accepted at a time. Financial metric answers remain synthetic and CRE checks remain explicitly MOCK unless supported execution evidence exists. See [AI negotiation](docs/AI_NEGOTIATION.md).
