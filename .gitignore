@@ -1,0 +1,27 @@
+# Never commit secrets, funds, or private user records
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Node / build / local state
+node_modules/
+.next/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Local response/event export: may include sensitive data
+data/parquet/
+data/tmp/
+*.parquet
+*.parquet.tmp
+
+# Local simulation scratch and secret-bearing logs
+workflows/cre/**/.env
+workflows/cre/**/secrets.json
