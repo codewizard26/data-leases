@@ -39,3 +39,9 @@ test('provider discovery queries enforce currency and exact integer price ceilin
 test('expired signed job reconciles while expired unsent jobs cannot broadcast',async()=>{let time=now;const clock=()=>new Date(time),transport=new FakeTransport();transport.uncertain=true;const signed=setup({transport,clock});await expect(signed.client.publishAnswerReceipt(request.verificationId)).rejects.toThrow('ARKIV_PUBLICATION_UNAVAILABLE');time='2026-11-08T12:00:00.000Z';transport.uncertain=false;expect((await signed.client.retryPending())[0]?.status).toBe('fulfilled');expect(transport.creates).toBe(1);expect(signed.journal.pending()).toHaveLength(0);
  const unsent=setup({clock});await expect(unsent.client.publishAnswerReceipt(request.verificationId)).rejects.toThrow('ARKIV_RECORD_EXPIRED');expect(unsent.transport.creates).toBe(0);time=now;await unsent.client.queueCompletedVerification(request.verificationId);time='2026-11-08T12:00:00.000Z';expect((await unsent.client.retryPending()).every(item=>item.status==='rejected')).toBe(true);expect(unsent.transport.creates).toBe(0);
 });
+
+test('valid unexpired offers are not excluded by the requested answer freshness window',async()=>{
+ const {client,transport}=setup();await client.publishProviderOffer(offer);
+ await client.findProviderOffers({schemaVersion:'1.0.0',sessionId:'discovery-test',mode:'ARKIV',questionTemplateId:offer.questionTemplateId,maxPriceMinor:'100',currency:offer.currency,maxAgeSeconds:1,requestedAt:now});
+ expect(transport.queries.at(-1)?.filters.createdAfter).toBeUndefined();expect(transport.queries.at(-1)?.filters.expiresAfter).toBe(now);
+});

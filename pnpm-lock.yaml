@@ -50,6 +50,9 @@ importers:
       '@data-leases/agents':
         specifier: workspace:*
         version: link:../../packages/agents
+      '@data-leases/arkiv':
+        specifier: workspace:*
+        version: link:../../packages/arkiv
       '@data-leases/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

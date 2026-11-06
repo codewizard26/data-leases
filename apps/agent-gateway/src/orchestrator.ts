@@ -33,11 +33,11 @@ export class RunOrchestrator {
   }
   if(query.mode==='ARKIV'||query.mode==='HYBRID'){
    if(!this.config.arkiv){if(query.mode==='ARKIV')throw new Error('ARKIV_NOT_CONFIGURED');}
-   else {const offers=await this.config.arkiv.findProviderOffers(query);for(const offer of offers){
+   else {try{const offers=await this.config.arkiv.findProviderOffers(query);for(const offer of offers){
     // Developer 2 discovery cannot enlarge the payer's configured destination allowlist.
     if(!this.config.providers.some(p=>p.providerId===offer.providerId&&offer.cardUrl===p.origin+'/.well-known/agent-card.json'&&offer.a2aEndpoint===p.origin+'/a2a'))continue;
     const live=await new DirectUrlDiscovery(policy).discover({...query,mode:'DIRECT_URL',directCardUrl:offer.cardUrl});candidates.push(...live.map(card=>({...card,discoverySource:'ARKIV' as const})));
-   }}
+   }}catch{if(query.mode==='ARKIV')throw new Error('ARKIV_DISCOVERY_UNAVAILABLE');}}
   }
   return [...new Map(candidates.filter(c=>c.capabilityMatched).map(c=>[c.providerId+'|'+c.cardUrl,c])).values()].sort((a,b)=>a.providerId.localeCompare(b.providerId));
  }

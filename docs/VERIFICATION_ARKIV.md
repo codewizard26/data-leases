@@ -1,6 +1,6 @@
 # Verification and shared evidence integration
 
-This work reuses `workflows/cre/verify-answer/main.ts`, the existing shared contracts and the existing gateway injection boundary. It does not rebuild A2A, payment settlement, the dashboard or Parquet persistence.
+This work connects the dashboard and gateway to the shared evidence layer and reuses `workflows/cre/verify-answer/main.ts`, the existing shared contracts and the existing gateway injection boundary. It does not rebuild A2A, payment settlement, the dashboard or Parquet persistence.
 
 ## CRE audit
 
@@ -38,6 +38,8 @@ Simulation writes a request-correlated `.artifact.json` and sanitized `.log` und
 The official SDK is pinned to 1.0.1. Publication uses Rabdi chain ID 7794095. Configure a funded testnet wallet locally; never put a private key in the dashboard or repository. Existing wallet reuse is supported by naming its environment variable:
 
 ```dotenv
+EVIDENCE_LAYER_ENABLED=true
+PROVIDER_LINK_SOURCE_ENABLED=true
 ARKIV_PRIVATE_KEY_ENV=ZERO_G_PRIVATE_KEY
 ARKIV_PUBLISHER_ADDRESS=0xYourPublicWalletAddress
 ARKIV_TRUSTED_PUBLISHERS=0xYourPublicWalletAddress
@@ -81,7 +83,7 @@ await gateway.close();
 await evidence.close();
 ```
 
-The gateway owner must add the workspace dependency and wire this at their bootstrap boundary. This task exposes the module without changing Member 1's bootstrap. The decorator queues completed verification metadata; a separate publication worker retries the outbox. Failed publication does not erase a completed verification or Hedera payment. The gateway remains the sole Parquet writer.
+The gateway startup now adds the workspace dependency and wires these adapters when `EVIDENCE_LAYER_ENABLED=true`. Without that flag, the original gateway behavior remains available. Shutdown drains the gateway before closing the evidence layer. The dashboard polls pending verification and exposes public receipt links. The decorator queues completed verification metadata; a separate publication worker retries the outbox. Failed publication does not erase a completed verification or Hedera payment. The gateway remains the sole Parquet writer.
 
 `publishVerifiedRun` resolves the original registered request, checks run/provider/quote/result bindings, and accepts a confirmed Hedera reference supplied by the payment owner. It does not settle or independently reconcile Hedera payments. Never supply a synthetic transaction as a real settlement reference.
 
@@ -102,3 +104,13 @@ The three recorded v2 simulations are in `tests/cre/evidence/v2/`: correct LINK 
 Official references: [Arkiv SDK quick start](https://docs.arkiv.network/start-here/first-entity/), [Rabdi network](https://docs.arkiv.network/), and [CRE execution overview](https://docs.chain.link/cre/overview).
 
 Final local validation: `pnpm typecheck` passed, `pnpm lint` passed, and `pnpm test` passed all 221 tests across 24 files on 2026-11-07. Network evidence was captured separately through real CRE CLI simulations and Rabdi transactions.
+
+## Connected application proof
+
+With `EVIDENCE_LAYER_ENABLED=true` and `PROVIDER_LINK_SOURCE_ENABLED=true`, `pnpm dev` starts the connected application. The provider reads the fixed Ethereum LINK contract at a recent block before registering the x402-protected answer. It records the block number/hash and checks that the header did not change. It cannot select another contract or method from a buyer prompt. This read is unsigned provider evidence; CRE independently re-reads it. Other demo metrics are not upgraded to verified financial data.
+
+Open `http://localhost:3001/dashboard`. Choose **Read data**, **LINK token**, and **Run once**. Compare prices, then authorize within your cap. Arkiv discovery is available under **More options**. Comparing prices never pays. Each authorized run retains separate payment, delivery, verification and publication statuses. Public LINK evidence is a disclosure above the task controls; it is separate from the buyer's current request.
+
+Observed real connected run `93932ffa-0e92-4226-bfc6-a1ab348a08cc` used a single-run lease capped at 500 tinybars total. Hedera mirror returned `SUCCESS`; CRE returned `CRE_CLI_SIMULATION:ACCEPTED`; Arkiv returned a published receipt. Parquet read-back contained 15 real events. The public-safe proof is [`arkiv/evidence/connected-run.json`](../arkiv/evidence/connected-run.json). No paid answer contents are included in that proof.
+
+`GET /api/integrations` returns public configuration status. `GET /api/evidence/latest` reads the latest accepted LINK receipt and its public checklist through the shared Arkiv package. Offer expiry controls discovery listing validity; requested answer freshness is enforced during negotiation and verification, rather than incorrectly treating an offer's publication age as the answer's age.

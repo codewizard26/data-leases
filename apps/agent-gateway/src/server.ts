@@ -1,3 +1,4 @@
+import type {ArkivEvidenceClient} from '@data-leases/arkiv';
 import {LeaseScheduler} from './lease-scheduler.js';
 import {EventStore} from '@data-leases/event-store';
 import {RunVerificationClient} from './run-verification.js';
@@ -20,6 +21,7 @@ export interface GatewayOptions {
   dataDirectory?:string;
   verificationClient?:VerificationClient;
   arkivClient?:ArkivClient;
+  evidenceQueries?:Pick<ArkivEvidenceClient,'queryLatestAcceptedAnswer'|'queryReceiptsByRunId'>;
   creRunner?: CreRunner;
   providerOrigins?: readonly string[];
 }
@@ -101,6 +103,13 @@ export async function startGateway(options: GatewayOptions = {}) {
     const localhostAuthority = authority.replace('127.0.0.1', 'localhost');
     if (request.headers.host !== authority && request.headers.host !== localhostAuthority) throw new RequestError(403, 'HOST_NOT_ALLOWED');
     const path = new URL(request.url ?? '/', baseUrl).pathname;
+    if(request.method==='GET'&&path==='/api/integrations'){json(response,200,{verification:{executionMode:'CRE_CLI_SIMULATION',durable:Boolean(options.evidenceQueries)},arkiv:{connected:Boolean(options.arkivClient),publishingEnabled:Boolean(options.arkivClient)&&process.env.ARKIV_PUBLISHING_ENABLED==='true',network:'Rabdi'},linkSource:{enabled:process.env.PROVIDER_LINK_SOURCE_ENABLED==='true',chainId:'eip155:1'}});return;}
+    if(request.method==='GET'&&path==='/api/evidence/latest'){
+      if(!options.evidenceQueries)throw new RequestError(503,'ARKIV_NOT_CONFIGURED');
+      const params=new URL(request.url!,baseUrl).searchParams;const metric=params.get('metric')??'ERC20_DECIMALS';
+      if(metric!=='ERC20_DECIMALS')throw new RequestError(400,'UNSUPPORTED_EVIDENCE_METRIC');
+      try{const answer=await options.evidenceQueries.queryLatestAcceptedAnswer({metric,maxAgeSeconds:86400});const receipts=answer&&'runId' in answer.record?await options.evidenceQueries.queryReceiptsByRunId(answer.record.runId):[];json(response,200,{answer,receipts});}catch{throw new RequestError(503,'ARKIV_QUERY_UNAVAILABLE');}return;
+    }
     if(request.method==='GET'&&path==='/api/runs'){json(response,200,{runs:orchestrator.history(),sessions:eventStore.sessions()});return;}
     if(request.method==='GET'&&path.startsWith('/api/runs/')){const id=path.slice('/api/runs/'.length);const run=orchestrator.get(id);if(!run)throw new RequestError(404,'RUN_NOT_FOUND');json(response,200,run);return;}
     if(request.method==='GET'&&path==='/api/leases'){json(response,200,{leases:leaseStore.schedules().map(row=>({...row,...leaseStore.get(row.leaseId)}))});return;}
@@ -127,7 +136,7 @@ export async function startGateway(options: GatewayOptions = {}) {
       return;
     }
     if (request.method === 'GET' && path === '/api/templates') {
-      json(response, 200, {templates: DEMO_SCENARIOS}); return;
+      json(response, 200, {templates: DEMO_SCENARIOS.map(scenario=>scenario.questionTemplateId==='ERC20_TOKEN_METADATA'&&process.env.PROVIDER_LINK_SOURCE_ENABLED==='true'?{...scenario,synthetic:false,description:'LINK decimals from Ethereum RPC at an explicit source block. Independently checked by local CRE simulation; unsigned provider identity.'}:scenario)}); return;
     }
     if(request.method==='GET'&&['/demo','/demo/','/dashboard','/dashboard/'].includes(path)){response.writeHead(302,{Location:'http://127.0.0.1:3001/dashboard','Cache-Control':'no-store'});response.end();return;}
     if (request.method === 'GET' && ['/', '/about', '/developer'].includes(path)) {

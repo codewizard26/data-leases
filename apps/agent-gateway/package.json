@@ -8,7 +8,8 @@
     "@data-leases/contracts": "workspace:*",
     "@data-leases/cre-adapter": "workspace:*",
     "@data-leases/discovery": "workspace:*",
-    "@data-leases/event-store": "workspace:*"
+    "@data-leases/event-store": "workspace:*",
+    "@data-leases/arkiv": "workspace:*"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

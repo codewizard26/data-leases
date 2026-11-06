@@ -23,3 +23,5 @@ A subsequent accepted CRE CLI artifact publication also completed and was read b
 The latest-accepted query returned that AnswerReceipt entity. The public answer value was absent. This proves publication and query read-back of a local CLI verification result, not a live decentralized CRE report or a paid answer delivery.
 
 The subsequent rejected and inconclusive runs were also published and read back. All eight entity IDs and transaction hashes are preserved in [`evidence/publication-readback.json`](evidence/publication-readback.json). The latest accepted answer stayed `0xa8c3923a58f092148a5bf7e9d63724c2d88afe21c263993f19110515df7dc809` after both publications.
+
+A real connected one-shot run subsequently settled 500 tinybars on Hedera testnet, received `CRE_CLI_SIMULATION:ACCEPTED`, and published an Arkiv answer receipt. Hedera mirror returned `SUCCESS`. Public-safe transaction, receipt and Parquet evidence is in [`evidence/connected-run.json`](evidence/connected-run.json). The earlier no-payment statement applies only to the isolated CRE proofs above.

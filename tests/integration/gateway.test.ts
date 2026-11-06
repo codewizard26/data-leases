@@ -167,3 +167,15 @@ test('recurring lease settings persist and can be paused or cancelled without en
  expect(response.status).toBe(201);const listing=await (await fetch(server.baseUrl+'/api/leases')).json();expect(listing.leases[0]).toMatchObject({leaseId,state:'ACTIVE',remainingTinybars:'2000',policy:{schedule:{intervalSeconds:300}}});
  for(const [action,state] of [['PAUSE','PAUSED'],['CANCEL','CANCELLED']]){const result=await fetch(server.baseUrl+'/api/leases/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({leaseId,action})});expect(await result.json()).toEqual({status:state});}
 });
+
+test('integration status is public-safe and unconfigured public queries fail explicitly',async()=>{
+ const server=await start();vi.stubEnv('ARKIV_PRIVATE_KEY','private-do-not-expose');
+ const status=await (await fetch(server.baseUrl+'/api/integrations')).json();expect(status).toMatchObject({arkiv:{connected:false},verification:{executionMode:'CRE_CLI_SIMULATION'}});expect(JSON.stringify(status)).not.toContain('private-do-not-expose');
+ expect((await fetch(server.baseUrl+'/api/evidence/latest')).status).toBe(503);
+});
+test('public evidence route calls the existing Arkiv query adapter and rejects arbitrary metrics',async()=>{
+ const queryLatestAcceptedAnswer=vi.fn(async()=>null),queryReceiptsByRunId=vi.fn(async()=>[]);
+ const server=await gateway.startGateway({port:0,evidenceQueries:{queryLatestAcceptedAnswer,queryReceiptsByRunId}});cleanup.push(server.close);
+ expect(await (await fetch(server.baseUrl+'/api/evidence/latest')).json()).toEqual({answer:null,receipts:[]});expect(queryLatestAcceptedAnswer).toHaveBeenCalledWith({metric:'ERC20_DECIMALS',maxAgeSeconds:86400});
+ expect((await fetch(server.baseUrl+'/api/evidence/latest?metric=arbitrary')).status).toBe(400);expect(queryLatestAcceptedAnswer).toHaveBeenCalledTimes(1);
+});
