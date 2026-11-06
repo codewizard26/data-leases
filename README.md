@@ -51,7 +51,7 @@ Configure OpenRouter in ignored `.env` as described in [compute setup](docs/COMP
 pnpm dev
 ```
 
-Open `http://127.0.0.1:3000` for the product landing page and brief plan. Select **Try the agent demo** or visit `http://127.0.0.1:3000/demo`. The local console provides negotiation transcripts and a separate AI prompt panel. Provider processes run on 4101 and 4102. The new Next.js lease dashboard runs at `http://127.0.0.1:3001`. See [payment and lease setup](docs/PAYMENTS.md) for operator caps, authorization, reconciliation, Parquet history and integration boundaries. The older development console remains available.
+Open `http://127.0.0.1:3001`. Choose a utility card, select a task and spending limit, compare agent prices, then **Authorize & run once**. The limit is visible beside the action; no separate lease screen is needed. About is at `/about`, and the older diagnostic console is under `/developer`, on the same browser address. Port3000 and old `/demo` links redirect to this dashboard. Provider processes run on4101/4102. See [payment and lease setup](docs/PAYMENTS.md).
 
 ## Mock use cases and communication walkthrough
 

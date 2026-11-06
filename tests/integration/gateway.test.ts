@@ -15,7 +15,8 @@ test('health exposes mode without credentials and serves browser page', async ()
   const server = await start();
   const response = await fetch(`${server.baseUrl}/api/health`);
   expect(await response.json()).toMatchObject({status:'ok',compute:{provider:'mock'}});
-  const page = await fetch(server.baseUrl);
+  const redirect=await fetch(server.baseUrl,{redirect:'manual'});expect(redirect.status).toBe(302);expect(redirect.headers.get('location')).toBe('http://127.0.0.1:3001/');
+  const page = await fetch(server.baseUrl+'/about');
   expect(page.status).toBe(200); expect(page.headers.get('content-type')).toContain('text/html');
   const landing = await page.text();
   expect(landing).toContain('id="plan"');
@@ -80,9 +81,10 @@ test('selected mock scenario returns correlated answer and transport details', a
   expect(body.results[0].answer.runId).toBe(body.results[0].runId);
 });
 
-test('demo workspace is available separately from the landing page', async () => {
+test('old demo redirects to the dashboard while developer tools remain accessible', async () => {
   const server = await start();
-  const response = await fetch(`${server.baseUrl}/demo`);
+  const redirect=await fetch(`${server.baseUrl}/demo`,{redirect:'manual'});expect(redirect.status).toBe(302);expect(redirect.headers.get('location')).toBe('http://127.0.0.1:3001/');
+  const response = await fetch(`${server.baseUrl}/developer`);
   expect(response.status).toBe(200);
   expect(await response.text()).toContain('template-gallery');
 });

@@ -1,6 +1,6 @@
 # Testnet payments and lease console
 
-Run Node >=22.13, pnpm10.28.1, `pnpm install`, then `pnpm dev`. The Next.js console runs at http://127.0.0.1:3001. The existing landing page and development tools remain at http://127.0.0.1:3000. Two separate A2A provider processes run on4101/4102. Gateway and providers bind to loopback; this is a local trusted-development deployment, not a public authenticated service.
+Run Node >=22.13, pnpm10.28.1, `pnpm install`, then `pnpm dev`. The Next.js console runs at http://127.0.0.1:3001. About and developer tools are available at `/about` and `/developer` on the same browser origin. Old port3000 and `/demo` entry points redirect to the dashboard. Two separate A2A provider processes run on4101/4102. Gateway and providers bind to loopback; this is a local trusted-development deployment, not a public authenticated service.
 
 ## Setup
 
@@ -9,7 +9,7 @@ Copy `.env.example` to ignored `.env` and set the Hedera testnet buyer account, 
 HBAR uses eight decimals: 100000000tinybars=1HBAR. Demo USD amounts are never converted to HBAR. The official pinned SDK packages are `@x402/core` and `@x402/hedera`2.30.0. Facilitator: https://x402.org/facilitator; supported Hedera testnet mechanism must advertise exact v2 and a fee payer. Setup availability is not proof of successful settlement.
 
 1. Discover providers by local registry or an explicitly configured direct card URL. Arkiv mode requires Developer2's adapter; hybrid reports local results when Arkiv is absent.
-2. Choose the question, freshness, rounds, per-request cap and total cap. Authorize a one-hour lease once. Gateway signs the local policy and persists it. The server-side signing key is a local authorization mechanism, not a browser-wallet signature or onchain delegated spending contract.
+2. Choose a utility card, task, agent count and maximum spend. Compare prices, then click **Authorize & run once**. Gateway signs and persists a single-run policy with both spending caps equal to the displayed limit. `maxRuns:1` prevents a second funded run even when the first cost less than that limit. The server-side signing key is a local authorization mechanism, not a browser-wallet signature or onchain delegated spending contract.
 3. Start the buyer. Actual A2A messages appear through durable SSE; each provider owns its negotiation state. Price then provider ID determines selection. Only the winner is accepted/paid. The buyer reserves total budget atomically before acceptance and rechecks cancellation before invoking payment.
 4. x402 receives the exact final quote. It does not negotiate. The buyer validates merchant, resource, network, asset, price, quote hash, identifiers, deadline and cap, checks balance, signs a quote-bound policy and official SDK transaction, then retries the protected endpoint once with PAYMENT-SIGNATURE.
 5. Read payment, delivery, CRE result and publication independently. A paid stale/rejected answer stays paid; no automatic refund is implied. HashScan links use the actual receipt transaction ID. The default CRE bridge passes the delivered answer to the existing simulation script; unsupported/synthetic evidence cannot become a live DON proof. Refresh CRE result after simulation finishes.
@@ -17,7 +17,7 @@ HBAR uses eight decimals: 100000000tinybars=1HBAR. Demo USD amounts are never co
 
 ## Provider pricing
 
-Each provider can configure `ProviderOptions.utilityRates[questionTemplateId]` with independent integer ask/floor values. Defaults: providerA read500/floor300; providerB read700/floor400. Simulated write defaults are four times each provider's read rate. The write utility is explicitly synthetic; it does not make an external write or trade. The earlier `/demo` quote cards show each actual A2A quote as it arrives before a per-purchase approval. The new console uses a signed lease for autonomous payment within its limits.
+Each provider can configure `ProviderOptions.utilityRates[questionTemplateId]` with independent integer ask/floor values. Defaults: providerA read500/floor300; providerB read700/floor400. Simulated write defaults are four times each provider's read rate. The write utility is explicitly synthetic; it does not make an external write or trade. The older `/developer` quote cards show each actual A2A quote as it arrives before a per-purchase approval. The new console uses a signed lease for autonomous payment within its limits.
 
 ## Recovery and persistence
 
@@ -31,7 +31,7 @@ Local tests exercise real A2A HTTP and real Parquet. Payment, verification and p
 
 ## Request parameters and AI work
 
-The simplified console uses a request form and comparison table instead of a provider card grid. Choose Read data, simulated Write report, or AI computation. Select the task, one or two eligible agents, price ceiling, maximum data age, discovery source and bargaining rounds. Request prices first; quote-only previews execute neither payments nor AI inference. Run on demand exposes separate one-hour spending authorization and a run-once action.
+The simplified console uses three explanatory utility cards, a request form and a provider comparison table. Choose Read data, simulated Write report, or AI computation. Select the task, one or two eligible agents, price ceiling, maximum data age, discovery source and bargaining rounds. Request prices first; quote-only previews execute neither payments nor AI inference. One **Authorize & run once** action creates the bounded policy and starts that run. Freshness and discovery settings are under More options; conversation, receipts and history are expandable.
 
 `AI_LINK_EXPLANATION` is a bounded AI utility with a fixed public prompt. Each provider uses its existing configured server-only `ComputeAdapter`. Providers without that adapter do not advertise the AI capability. Default compute ask/floor is twice that provider's read rate; `utilityRates` overrides it. Acceptance triggers the selected provider's real model call; its report is withheld behind the x402 endpoint for paid requests. Report text is displayed separately from the structured answer and independent verification. Generated text is not proof of blockchain facts. No unrestricted private prompts are written to Parquet. A new additive `ComputationResultSchema` remains proposed for shared-contract review.
 
