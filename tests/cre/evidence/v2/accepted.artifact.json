@@ -1,0 +1,128 @@
+{
+  "request": {
+    "schemaVersion": "1.0.0",
+    "verificationId": "c718d958-a212-4b94-ac66-4815651e61c4",
+    "runId": "695a21b9-4609-4d3d-a921-91cb273f0aab",
+    "sessionId": "ecb3977b-9f4b-4549-9de4-26abab224650",
+    "questionTemplateId": "ERC20_TOKEN_METADATA",
+    "providerId": "cre-demo-provider",
+    "answer": {
+      "schemaVersion": "1.0.0",
+      "sessionId": "ecb3977b-9f4b-4549-9de4-26abab224650",
+      "negotiationId": "8129ce87-d89c-468f-a185-76790edac2f2",
+      "runId": "695a21b9-4609-4d3d-a921-91cb273f0aab",
+      "questionTemplateId": "ERC20_TOKEN_METADATA",
+      "providerId": "cre-demo-provider",
+      "acceptedQuoteId": "unpaid-cre-proof",
+      "deliveredAt": "2026-11-06T22:04:52.235Z",
+      "chainId": "eip155:1",
+      "metric": "ERC20_DECIMALS",
+      "value": "18",
+      "unit": "decimal-places",
+      "sourceContract": "0x514910771af9ca656af840dff83e8264ecf986ca",
+      "sourceBlockNumber": "26358603",
+      "sourceBlockHash": "0x99361b9391616112e3554ec084298f0e3e02e18469ff44f595365e34857f9f38",
+      "methodologyVersion": "link-decimals-v1",
+      "evidenceRefs": [],
+      "evidencePolicyId": "link-decimals-v2",
+      "demoTrustMode": "UNTRUSTED_MOCK"
+    },
+    "policy": {
+      "policyId": "link-decimals-v2",
+      "version": "2.0.0",
+      "allowedChainIds": [
+        "eip155:1"
+      ],
+      "allowedMetricIds": [
+        "ERC20_DECIMALS"
+      ],
+      "maxAgeSeconds": 3600,
+      "maxAbsDeltaRaw": "0"
+    },
+    "requestedAt": "2026-11-06T22:04:52.235Z"
+  },
+  "requestSha256": "264c615dd1a4457a641499098b4a2b3919afbe8c5b500252475322e162b8f55c",
+  "result": {
+    "schemaVersion": "1.0.0",
+    "verificationId": "c718d958-a212-4b94-ac66-4815651e61c4",
+    "runId": "695a21b9-4609-4d3d-a921-91cb273f0aab",
+    "providerId": "cre-demo-provider",
+    "executionMode": "CRE_CLI_SIMULATION",
+    "status": "ACCEPTED",
+    "checks": [
+      {
+        "checkId": "ANSWER_SCHEMA_VALID",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "POLICY_SUPPORTED",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "SOURCE_CHAIN_SUPPORTED",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "SOURCE_CONTRACT_ALLOWED",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "METRIC_UNITS_MATCH",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "ANSWER_FRESHNESS_VALID",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "SOURCE_BLOCK_REFERENCE_VALID",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "SOURCE_FRESHNESS_VALID",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "ONCHAIN_REFERENCE_MATCH",
+        "status": "PASS",
+        "observed": "18",
+        "expected": "18",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "EXTERNAL_HTTP_REFERENCE_MATCH",
+        "status": "PASS",
+        "observed": "18",
+        "expected": "18",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "PROVIDER_ALLOWED",
+        "status": "PASS",
+        "reasonCode": "PROVIDER_ID_ALLOWLISTED"
+      },
+      {
+        "checkId": "REQUIRED_EVIDENCE_AVAILABLE",
+        "status": "PASS",
+        "reasonCode": "REQUIRED_EVIDENCE_PRESENT"
+      }
+    ],
+    "referenceChainId": "eip155:1",
+    "referenceBlockNumber": "26358603",
+    "referenceBlockHash": "0x99361b9391616112e3554ec084298f0e3e02e18469ff44f595365e34857f9f38",
+    "executedAt": "2026-11-06T22:05:00.847Z",
+    "evidenceRefs": [
+      "eip155:1/block/26358603/contract/0x514910771af9ca656af840dff83e8264ecf986ca",
+      "https://raw.githubusercontent.com/Uniswap/default-token-list/main/src/tokens/mainnet.json"
+    ]
+  },
+  "transcriptSha256": "f37a8839ce51a3ff47f6a2d7ae25460dd9a73802a2f7c4696f13bd629e1b0d6d"
+}

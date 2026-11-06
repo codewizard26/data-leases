@@ -1,0 +1,11 @@
+import './prepare.js';
+import {readFile,writeFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import {randomUUID} from 'node:crypto';
+import {VerificationRequestSchema} from '@data-leases/contracts';
+import {POLICY_V2} from '../src/policy-v2.js';
+const output=resolve(import.meta.dirname,'../../../data/tmp/cre');
+const original=VerificationRequestSchema.parse(JSON.parse(await readFile(resolve(output,'request.json'),'utf8')));
+const request=VerificationRequestSchema.parse({...original,verificationId:randomUUID(),answer:{...original.answer,evidencePolicyId:POLICY_V2},policy:{...original.policy,policyId:POLICY_V2,version:'2.0.0'}});
+for(const [name,value] of Object.entries({request,tampered:{...request,verificationId:randomUUID(),answer:{...request.answer,value:'19'}},stale:{...request,verificationId:randomUUID(),answer:{...request.answer,deliveredAt:new Date(Date.now()-7200000).toISOString()}},unavailable:{...request,verificationId:randomUUID()}}))await writeFile(resolve(output,'v2-'+name+'.json'),JSON.stringify(value,null,2)+'\n',{mode:0o600});
+console.log('Prepared fresh v2 requests; use local-v2 or local-v2-unavailable targets.');

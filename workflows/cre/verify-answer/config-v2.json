@@ -1,0 +1,9 @@
+{
+  "allowedProviderIds": [
+    "cre-demo-provider",
+    "provider-a",
+    "provider-b"
+  ],
+  "requireProviderSignature": false,
+  "referenceScenario": "normal"
+}

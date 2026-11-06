@@ -6,12 +6,14 @@ import { stripVTControlCharacters } from 'node:util';
 import { VerificationRequestSchema, VerificationResultSchema } from '@data-leases/contracts';
 import { CreSimulationVerificationClient, requestDigest } from '../src/index.js';
 import { readSimulationOutput } from '../src/transcript.js';
+import {acquireSimulationLock} from './simulation-lock.js';
 import { artifactPaths } from './artifact-paths.js';
 
 const root = resolve(import.meta.dirname, '../../..');
 const requestPath = resolve(root, process.argv[2] ?? 'data/tmp/cre/request.json');
 const request = VerificationRequestSchema.parse(JSON.parse(await readFile(requestPath, 'utf8')));
 const cli = process.env.CRE_BIN ?? 'cre';
+const target=process.env.CRE_TARGET??'local-simulation';if(!['local-simulation','local-v2','local-v2-unavailable'].includes(target))throw new Error('UNSUPPORTED_CRE_TARGET');
 const version = await new Promise<string>((ok, fail) => {
   const child = spawn(cli, ['version'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let text = '';
@@ -20,8 +22,9 @@ const version = await new Promise<string>((ok, fail) => {
   child.on('close', code => code === 0 ? ok(text) : fail(new Error('CRE_VERSION_FAILED')));
 });
 if (!version.includes('v1.39.0')) throw new Error('EXPECTED_CRE_CLI_1_39_0');
+const releaseSimulation=acquireSimulationLock(resolve(root,'data/tmp/cre/simulation.lock'));process.once('exit',releaseSimulation);
 const capture = await new Promise<{ code: number | null; text: string }>((ok, fail) => {
-  const child = spawn(cli, ['workflow', 'simulate', 'verify-answer', '--target', 'local-simulation',
+  const child = spawn(cli, ['workflow', 'simulate', 'verify-answer', '--target', target,
     '--non-interactive', '--trigger-index', '0', '--http-payload', requestPath],
   { cwd: resolve(root, 'workflows/cre'), stdio: ['ignore', 'pipe', 'pipe'] });
   let text = '';

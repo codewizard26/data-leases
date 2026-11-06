@@ -8,10 +8,13 @@ import { VerificationRequestSchema } from '@data-leases/contracts';
 import {
   evaluateVerification, LINK_CONTRACT, METADATA_URL, type VerificationEvidence,
 } from '@data-leases/cre-adapter/policy';
+import {evaluateVerificationV2,POLICY_V2,type VerificationAuthority} from '@data-leases/cre-adapter/policy-v2';
 import { requestDigest } from '@data-leases/cre-adapter/digest';
 
-function fetchMetadata(sender: HTTPSendRequester): string {
-  const response = sender.sendRequest({ url: METADATA_URL, method: 'GET', timeout: '8s' }).result();
+const UNAVAILABLE_METADATA_URL='https://raw.githubusercontent.com/Uniswap/default-token-list/main/src/tokens/data-leases-unavailable-reference.json';
+interface WorkflowConfig extends VerificationAuthority {referenceScenario?:'normal'|'unavailable'}
+function fetchMetadata(sender: HTTPSendRequester,referenceUrl:string): string {
+  const response = sender.sendRequest({ url: referenceUrl, method: 'GET', timeout: '8s' }).result();
   if (!ok(response) || response.body.length > 1_000_000) throw new Error('HTTP_REFERENCE_UNAVAILABLE');
   const data: unknown = json(response);
   if (!Array.isArray(data)) throw new Error('HTTP_REFERENCE_INVALID');
@@ -24,7 +27,7 @@ function fetchMetadata(sender: HTTPSendRequester): string {
   return String(token.decimals);
 }
 
-function onRequest(runtime: Runtime<Record<string, never>>, payload: HTTPPayload): string {
+function onRequest(runtime: Runtime<WorkflowConfig>, payload: HTTPPayload): string {
   if (payload.input.length > 32_768) throw new Error('REQUEST_TOO_LARGE');
   const request = VerificationRequestSchema.parse(decodeJson(payload.input));
   runtime.log(`DATA_LEASES_REQUEST_SHA256:${requestDigest(request)}`);
@@ -53,17 +56,17 @@ function onRequest(runtime: Runtime<Record<string, never>>, payload: HTTPPayload
     } catch { runtime.log('EVM_REFERENCE_UNAVAILABLE'); }
   }
   try {
-    const decimals = new HTTPClient().sendRequest(runtime, fetchMetadata, consensusIdenticalAggregation<string>())().result();
+    const decimals = new HTTPClient().sendRequest(runtime, fetchMetadata, consensusIdenticalAggregation<string>())(runtime.config.referenceScenario==='unavailable'?UNAVAILABLE_METADATA_URL:METADATA_URL).result();
     evidence.http = { chainId: 'eip155:1', contract: LINK_CONTRACT, decimals, url: METADATA_URL };
   } catch { runtime.log('HTTP_REFERENCE_UNAVAILABLE'); }
-  const result = evaluateVerification(request, evidence, 'CRE_CLI_SIMULATION', runtime.now().toISOString());
+  const result = request.policy.policyId===POLICY_V2?evaluateVerificationV2(request,evidence,'CRE_CLI_SIMULATION',runtime.now().toISOString(),runtime.config):evaluateVerification(request, evidence, 'CRE_CLI_SIMULATION', runtime.now().toISOString());
   runtime.log(`DATA_LEASES_RESULT_STATUS:${result.status}`);
   // User logs can be dropped at shutdown. Bind the request in the authoritative callback return.
   return JSON.stringify({ requestSha256: requestDigest(request), result });
 }
 
 export async function main() {
-  const runner = await Runner.newRunner<Record<string, never>>();
+  const runner = await Runner.newRunner<WorkflowConfig>();
   // Empty authorization is permitted only for local simulation. No deployed endpoint is provided.
   await runner.run(() => [handler(new HTTPCapability().trigger({}), onRequest)]);
 }

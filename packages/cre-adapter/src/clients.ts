@@ -3,7 +3,8 @@ import {
   VerificationRequestSchema, VerificationResultSchema,
   type VerificationClient, type VerificationRequest, type VerificationResult,
 } from '@data-leases/contracts';
-import { evaluateVerification, REQUIRED_CHECK_IDS, type VerificationEvidence } from './policy.js';
+import { evaluateVerification, type VerificationEvidence } from './policy.js';
+import {requiredChecksForRequest} from './policy-v2.js';
 import { canonical, requestDigest } from './digest.js';
 export { requestDigest } from './digest.js';
 
@@ -58,7 +59,7 @@ export class CreSimulationVerificationClient extends MemoryClient {
     if (!lines.includes('CLI_EXIT_CODE:0') || !lines.includes('Execution finished signal received')) throw new Error('SIMULATION_NOT_SUCCESSFUL');
     const returned = lines.find(line => line.startsWith('CLI_RETURNED_RESULT:'));
     if (!returned || canonical(JSON.parse(returned.slice('CLI_RETURNED_RESULT:'.length))) !== canonical(result)) throw new Error('CLI_RETURNED_RESULT_MISMATCH');
-    if (REQUIRED_CHECK_IDS.some(id => !result.checks.some(c => c.checkId === id)) ||
+    if (requiredChecksForRequest(request).some(id => !result.checks.some(c => c.checkId === id)) ||
       new Set(result.checks.map(c => c.checkId)).size !== result.checks.length) throw new Error('MISSING_REQUIRED_CHECKS');
     const status = result.checks.some(c => c.status === 'FAIL') ? 'REJECTED' : result.checks.some(c => c.status === 'UNKNOWN') ? 'INCONCLUSIVE' : 'ACCEPTED';
     if (status !== result.status) throw new Error('INVALID_ACCEPTANCE');
