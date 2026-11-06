@@ -1,0 +1,14 @@
+SDK 1.23.0 / @chainlink/cre-sdk-javy-plugin 1.7.0 / Javy 8.1.0
+Command from repository root:
+pnpm --filter @data-leases/cre-workflow exec cre-compile main.ts /tmp/data-leases-verify-answer.wasm
+
+Sanitized observed output on 2026-11-06:
+Compiling workflow
+Step 1: Compiling JS...
+Built: /tmp/data-leases-verify-answer.js
+Step 2: Compiling to WASM...
+Compiled: /tmp/data-leases-verify-answer.wasm
+Workflow built: /tmp/data-leases-verify-answer.wasm
+Exit status: 0
+
+Compilation is NOT CRE execution or DON attestation. Generated binaries are not committed.

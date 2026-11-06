@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "1.0.0",
+  "verificationId": "verification-fixture",
+  "runId": "run-fixture",
+  "providerId": "cre-demo-provider",
+  "executionMode": "MOCK",
+  "status": "REJECTED",
+  "checks": [
+    {
+      "checkId": "ANSWER_SCHEMA_VALID",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "POLICY_SUPPORTED",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "SOURCE_CHAIN_SUPPORTED",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "SOURCE_CONTRACT_ALLOWED",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "METRIC_UNITS_MATCH",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "ANSWER_FRESHNESS_VALID",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "SOURCE_BLOCK_REFERENCE_VALID",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "SOURCE_FRESHNESS_VALID",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "ONCHAIN_REFERENCE_MATCH",
+      "status": "FAIL",
+      "observed": "18",
+      "expected": "19",
+      "reasonCode": "VALUE_MISMATCH"
+    },
+    {
+      "checkId": "EXTERNAL_HTTP_REFERENCE_MATCH",
+      "status": "PASS",
+      "observed": "18",
+      "expected": "18",
+      "reasonCode": "VALIDATION_PASSED"
+    }
+  ],
+  "referenceChainId": "eip155:1",
+  "referenceBlockNumber": "21000000",
+  "referenceBlockHash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+  "executedAt": "2026-11-06T12:00:00.000Z",
+  "evidenceRefs": [
+    "eip155:1/block/21000000/contract/0x514910771af9ca656af840dff83e8264ecf986ca",
+    "https://raw.githubusercontent.com/Uniswap/default-token-list/main/src/tokens/mainnet.json"
+  ]
+}

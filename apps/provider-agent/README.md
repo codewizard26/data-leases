@@ -1,5 +1,3 @@
-# provider-agent
+# Provider agent
 
-Separate A2A provider processes on ports 4101 and 4102.
-
-Reserved for Member A; application implementation is pending.
+`pnpm dev:provider` starts the loopback-only A2A provider. Configure `PORT`, `PROVIDER_ID`, `ASK_MINOR`, and `FLOOR_MINOR` in the server environment. See the root README for two-provider commands and limitations.

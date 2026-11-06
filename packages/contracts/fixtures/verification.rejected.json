@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1.0.0",
+  "verificationId": "verification-fixture-1",
+  "runId": "run-fixture-1",
+  "providerId": "provider-a",
+  "executionMode": "MOCK",
+  "status": "REJECTED",
+  "checks": [
+    {
+      "checkId": "FIXTURE_REFERENCE_MATCH",
+      "status": "FAIL",
+      "reasonCode": "SYNTHETIC_FIXTURE_MISMATCH"
+    }
+  ],
+  "executedAt": "2026-11-06T12:00:02Z",
+  "evidenceRefs": [
+    "fixture:synthetic-reference"
+  ]
+}

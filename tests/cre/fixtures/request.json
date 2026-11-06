@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1.0.0",
+  "verificationId": "verification-fixture",
+  "runId": "run-fixture",
+  "sessionId": "session-fixture",
+  "questionTemplateId": "ERC20_TOKEN_METADATA",
+  "providerId": "cre-demo-provider",
+  "answer": {
+    "schemaVersion": "1.0.0",
+    "sessionId": "session-fixture",
+    "negotiationId": "negotiation-fixture",
+    "runId": "run-fixture",
+    "questionTemplateId": "ERC20_TOKEN_METADATA",
+    "providerId": "cre-demo-provider",
+    "acceptedQuoteId": "unpaid-fixture",
+    "deliveredAt": "2026-11-06T12:00:00.000Z",
+    "chainId": "eip155:1",
+    "metric": "ERC20_DECIMALS",
+    "value": "18",
+    "unit": "decimal-places",
+    "sourceContract": "0x514910771af9ca656af840dff83e8264ecf986ca",
+    "sourceBlockNumber": "21000000",
+    "sourceBlockHash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "methodologyVersion": "link-decimals-v1",
+    "evidenceRefs": [],
+    "evidencePolicyId": "link-decimals-v1",
+    "demoTrustMode": "UNTRUSTED_MOCK"
+  },
+  "policy": {
+    "policyId": "link-decimals-v1",
+    "version": "1.0.0",
+    "allowedChainIds": [
+      "eip155:1"
+    ],
+    "allowedMetricIds": [
+      "ERC20_DECIMALS"
+    ],
+    "maxAgeSeconds": 3600,
+    "maxAbsDeltaRaw": "0"
+  },
+  "requestedAt": "2026-11-06T12:00:00.000Z"
+}

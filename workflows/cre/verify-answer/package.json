@@ -1,0 +1,15 @@
+{
+  "name": "@data-leases/cre-workflow",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@chainlink/cre-sdk": "1.23.0",
+    "@data-leases/contracts": "workspace:*",
+    "@data-leases/cre-adapter": "workspace:*",
+    "zod": "3.25.76"
+  }
+}

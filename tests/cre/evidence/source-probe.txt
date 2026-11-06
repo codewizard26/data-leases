@@ -1,0 +1,14 @@
+DIRECT_SOURCE_PROBE_NOT_CRE — observed 2026-11-06T18:20:17.885Z
+Ethereum JSON-RPC: https://ethereum-rpc.publicnode.com
+eth_call to 0x514910771af9ca656af840dff83e8264ecf986ca
+calldata: 0x313ce567 (decimals())
+block number: 26357487
+block hash: 0xfd7b2709e2f419af0d02e138b709439718cbf6beca4d784709bd8edbd70a3e90
+ABI-decoded result: 18
+
+HTTP GET: https://raw.githubusercontent.com/Uniswap/default-token-list/main/src/tokens/mainnet.json
+Matching token: chainId=1, address=0x514910771af9ca656af840dff83e8264ecf986ca
+HTTP metadata decimals: 18
+
+These independent direct source probes validate source availability only.
+They were performed outside the CRE runtime and are NOT CRE simulation evidence.

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1.0.0",
+  "questionTemplateId": "ETHEREUM_LENDING_LIQUIDITY",
+  "chainId": "eip155:1",
+  "assetId": "demo:ETH",
+  "protocolId": "demo:lending",
+  "evidencePolicyId": "demo-v1",
+  "description": "Synthetic lending liquidity fixture; not live market data."
+}

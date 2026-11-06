@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.0.0",
+  "sessionId": "session-fixture-1",
+  "negotiationId": "negotiation-fixture-1",
+  "runId": "run-fixture-1",
+  "questionTemplateId": "ETHEREUM_LENDING_LIQUIDITY",
+  "providerId": "provider-a",
+  "acceptedQuoteId": "quote-fixture-1",
+  "deliveredAt": "2026-11-06T12:00:00Z",
+  "chainId": "eip155:1",
+  "metric": "demo.liquidity",
+  "value": "1000000",
+  "unit": "raw",
+  "methodologyVersion": "demo-v1",
+  "evidenceRefs": [
+    "fixture:synthetic-reference"
+  ],
+  "evidencePolicyId": "demo-v1",
+  "demoTrustMode": "UNTRUSTED_MOCK"
+}

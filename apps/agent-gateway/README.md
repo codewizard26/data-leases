@@ -1,5 +1,3 @@
-# agent-gateway
+# Buyer entry point
 
-Buyer HTTP API and durable SSE stream.
-
-Reserved for Member A; application implementation is pending.
+`pnpm demo:buyer` discovers the two local providers and negotiates using the official A2A client. This slice provides a CLI buyer; the HTTP gateway and SSE API remain pending.
