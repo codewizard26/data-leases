@@ -1,0 +1,12 @@
+{
+  "name": "@data-leases/provider-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@data-leases/agents": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

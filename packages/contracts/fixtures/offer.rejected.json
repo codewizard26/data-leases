@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1.0.0",
+  "sessionId": "session-fixture-1",
+  "negotiationId": "negotiation-fixture-1",
+  "runId": "run-fixture-1",
+  "messageId": "message-fixture-3",
+  "fromAgentId": "provider-a",
+  "toAgentId": "buyer",
+  "round": 3,
+  "questionTemplateId": "ETHEREUM_LENDING_LIQUIDITY",
+  "evidencePolicyId": "demo-v1",
+  "maxAgeSeconds": 60,
+  "expiresAt": "2030-01-01T00:00:00Z",
+  "offerId": "offer-fixture-1",
+  "quoteId": "quote-fixture-1",
+  "revision": 1,
+  "currency": "demo:USD6",
+  "priceMinor": "20000",
+  "action": "REJECT",
+  "reasonCode": "BELOW_FLOOR"
+}
