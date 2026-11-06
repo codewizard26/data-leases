@@ -1,0 +1,29 @@
+{
+  "name": "provider-b",
+  "description": "DEMO_UNTRUSTED: deterministic unpaid negotiation provider",
+  "supportedInterfaces": [
+    {
+      "url": "http://127.0.0.1:4102/a2a",
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "1.0"
+    }
+  ],
+  "version": "0.1.0",
+  "capabilities": {},
+  "defaultInputModes": [
+    "application/vnd.data-leases.negotiation+json;v=1"
+  ],
+  "defaultOutputModes": [
+    "application/vnd.data-leases.negotiation+json;v=1"
+  ],
+  "skills": [
+    {
+      "id": "ETHEREUM_LENDING_LIQUIDITY",
+      "name": "Ethereum lending liquidity",
+      "description": "Mock data negotiation; no live financial data",
+      "tags": [
+        "DEMO_UNTRUSTED"
+      ]
+    }
+  ]
+}

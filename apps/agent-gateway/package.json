@@ -1,0 +1,15 @@
+{
+  "name": "@data-leases/agent-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@data-leases/agents": "workspace:*",
+    "@data-leases/discovery": "workspace:*",
+    "@data-leases/contracts": "workspace:*",
+    "@data-leases/cre-adapter": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

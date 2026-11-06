@@ -260,3 +260,11 @@ Parquet `payload_json` for verification response should include the **complete p
 - [ ] Member B validates the schemas, fixtures, and CRE adapter's checks.
 - [ ] Both agree the event format and interface versions are frozen for v1.
 - [ ] Both can independently run their work without editing the other's paths.
+
+## Bootstrap implementation notes
+
+`packages/contracts/src/index.ts` now implements the proposed v1 Zod schemas. This remains a proposed contract until both contributors complete the signoff above. Fixtures under `packages/contracts/fixtures` use synthetic data and explicitly use `MOCK` verification; the tampered answer is structurally valid so that verification can reject its contradictory value.
+
+Validation additionally enforces exact numeric answer strings, nonnegative integer minor units, rounds 1–3, UTC timestamps, URL syntax, SHA-256 hex strings, and matching request/answer correlation IDs and evidence policy IDs. `SIGNED_PROVIDER` requires a signature field, but structural validation does not cryptographically verify it. `ACCEPTED` requires at least one check with every supplied check passing; the verifier still must enforce policy-required checks and independent evidence.
+
+Conversation event types are finite: `DISCOVERY_STARTED`, `DISCOVERY_RESULT`, `DISCOVERY_FAILED`, `A2A_SENT`, `A2A_RECEIVED`, `QUOTE`, `NEGOTIATION_OUTCOME`, `ANSWER_REQUESTED`, `ANSWER_DELIVERED`, `VERIFICATION_REQUEST`, `VERIFICATION_RESULT`, `TIMEOUT`, and `ERROR`. URL validation is syntactic only; transport code must enforce destination allowlists and SSRF protection.
