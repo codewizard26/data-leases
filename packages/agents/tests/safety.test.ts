@@ -1,10 +1,10 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { AgentCard, Message, Role } from '@a2a-js/sdk';
 import { ClientFactory } from '@a2a-js/sdk/client';
-import { negotiate, NEGOTIATION_MEDIA_TYPE, providerCard, startProvider } from '../src/index.js';
-import type { NegotiationMessage } from '@data-leases/contracts';
+import { negotiate, NEGOTIATION_MEDIA_TYPE, providerCard, startProvider, ANSWER_MEDIA_TYPE } from '../src/index.js';
+import type { NegotiationMessage, AnswerEnvelope } from '@data-leases/contracts';
 afterEach(() => vi.unstubAllGlobals());
-function maliciousProvider(change: (reply: NegotiationMessage) => NegotiationMessage) {
+function maliciousProvider(change: (reply: NegotiationMessage) => NegotiationMessage, changeAnswer: (answer: AnswerEnvelope) => AnswerEnvelope = answer => answer) {
  vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
   if (String(url).endsWith('agent-card.json')) return Response.json(AgentCard.toJSON(providerCard('http://127.0.0.1:4101', 'provider-a')));
   const rpc = JSON.parse(String(init?.body));
@@ -12,7 +12,9 @@ function maliciousProvider(change: (reply: NegotiationMessage) => NegotiationMes
   const input = message.parts[0]?.content;
   if (input?.$case !== 'data') throw new Error('missing data');
   const reply = change({ ...input.value, action: input.value.action === 'ACCEPT' ? 'ACCEPT' : 'PROPOSE', fromAgentId: 'provider-a', toAgentId: 'buyer', priceMinor: '100', quoteId: 'quote', termsHash: 'hash' });
-  const output = Message.fromJSON({ messageId: 'reply', contextId: 'context', role: 'ROLE_AGENT', parts: [{ data: reply, mediaType: NEGOTIATION_MEDIA_TYPE }] });
+  const parts: Array<{ data: unknown; mediaType: string }> = [{ data: reply, mediaType: NEGOTIATION_MEDIA_TYPE }];
+  if (reply.action === 'ACCEPT') parts.push({ mediaType: ANSWER_MEDIA_TYPE, data: changeAnswer({ schemaVersion: '1.0.0', sessionId: reply.sessionId, negotiationId: reply.negotiationId, runId: reply.runId!, questionTemplateId: reply.questionTemplateId, providerId: 'provider-a', acceptedQuoteId: reply.quoteId!, deliveredAt: new Date().toISOString(), chainId: 'eip155:1', metric: 'aave_v3.usdc.available_liquidity', value: '1250000000000', unit: 'USDC_RAW_6_DECIMALS', methodologyVersion: 'synthetic-demo-v1', evidenceRefs: ['mock:scenario:aave-usdc-liquidity'], evidencePolicyId: 'demo-policy-v1', demoTrustMode: 'UNTRUSTED_MOCK' }) });
+  const output = Message.fromJSON({ messageId: 'reply', contextId: 'context', role: 'ROLE_AGENT', parts });
   return Response.json({ jsonrpc: '2.0', id: rpc.id, result: { message: Message.toJSON(output) } });
  }));
 }
@@ -71,3 +73,10 @@ test('invalid identity cannot erase an outstanding provider quote; accepted hash
   expect(acceptance.termsHash).toBe(quote.termsHash);
  } finally { await provider.close(); }
 });
+
+for (const key of ['runId', 'sessionId', 'negotiationId', 'providerId', 'questionTemplateId', 'acceptedQuoteId', 'metric', 'unit'] as const) {
+ test(`buyer rejects mismatched answer ${key}`, async () => {
+  maliciousProvider(reply => reply, answer => ({ ...answer, [key]: 'different' }));
+  await expect(negotiate(buyer)).rejects.toThrow('ANSWER_BINDING_MISMATCH');
+ });
+}

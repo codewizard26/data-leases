@@ -36,3 +36,9 @@ Tests use an injected HTTP transport and require no tokens:
 ```sh
 pnpm exec vitest run packages/agents/tests/compute.test.ts
 ```
+
+## OpenRouter
+
+Set `COMPUTE_PROVIDER=openrouter`, `OPENROUTER_API_KEY`, and optionally `OPENROUTER_MODEL` in the ignored root `.env`. The model defaults to `openrouter/free`; explicit models must end in `:free`. Paid models are rejected. Requests use the fixed OpenRouter endpoint with a 60-second timeout, a 1,024-token output cap, bounded response size, and sanitized errors. Free routing may select a different model for each request and remains subject to provider capacity and account quotas.
+
+Run `pnpm dev` to load `.env` and start the local console at `http://127.0.0.1:3000` plus two provider processes. The AI panel submits prompts to OpenRouter. The negotiation panel shows actual deterministic A2A turns independently of inference. No secrets are sent to the browser. Only one AI request runs at a time; rate limits are reported without automatic retry loops.

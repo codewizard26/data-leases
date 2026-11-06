@@ -27,6 +27,10 @@ Provider ports: 4101, 4102. The buyer prints actual A2A message IDs plus session
 
 Contracts remain proposed until both contributors review and accept them. VerificationRequest and VerificationResult are exported centrally, with example MOCK results; no verifier implementation was added to the CRE-owned package.
 
-No dataset path exists yet: the event store and Parquet writer remain pending. Transcripts and provider quote state are not durable. Add canonical event recording and recovery before claiming sprint acceptance. Next slices are unpaid answer delivery, a gateway/SSE stream, dashboard, SQLite index/outbox and immutable Parquet files, followed by mock-verifier consumption.
+No dataset path exists yet: the event store and Parquet writer remain pending. Transcripts and provider quote state are not durable. Add canonical event recording and recovery before claiming sprint acceptance. Mock answer delivery and the local gateway console now work. Next slices are SSE, the full dashboard, SQLite index/outbox and immutable Parquet files, followed by mock-verifier consumption.
 
 No real 0G inference was executed. Configure provider endpoint, model and secret using `docs/COMPUTE.md`; testnet still requires available providers and funded test-token accounts. Inference is advisory and has no economic authority. Local agent cards and offers are unsigned `DEMO_UNTRUSTED`; do not expose this service publicly.
+
+## Scenario update
+
+Three mock templates now deliver schema-validated answers inside the provider acceptance A2A message. Liquidity and utilization follow the spec; treasury risk is explicitly illustrative. Catalog is `packages/agents/src/scenarios.ts`, exposed at `GET /api/templates`. The gateway accepts `questionTemplateId` and returns transport provenance, transcript, answer and honest stage labels.

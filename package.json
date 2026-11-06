@@ -14,7 +14,8 @@
     "test:integration": "vitest run tests/integration packages/agents/tests/loop.test.ts",
     "demo:a2a": "tsx scripts/demo.ts",
     "dev:provider": "tsx apps/provider-agent/src/main.ts",
-    "demo:buyer": "tsx apps/agent-gateway/src/buyer.ts"
+    "demo:buyer": "tsx apps/agent-gateway/src/buyer.ts",
+    "dev": "node --env-file=.env --import tsx scripts/dev.ts"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",

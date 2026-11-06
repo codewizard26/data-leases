@@ -37,3 +37,10 @@ test('preserves integer prices beyond JavaScript safe integer range', async () =
   expect(result.priceMinor).toBe('9007199254740993123');
  } finally { await provider.close(); }
 });
+test('occupied provider port rejects with EADDRINUSE rather than address TypeError', async () => {
+ const provider = await agents.startProvider({ port: 0, providerId: 'occupied', askMinor: '100', floorMinor: '50' });
+ try {
+  const port = Number(new URL(provider.baseUrl).port);
+  await expect(agents.startProvider({ port, providerId: 'conflict', askMinor: '100', floorMinor: '50' })).rejects.toMatchObject({ code: 'EADDRINUSE' });
+ } finally { await provider.close(); }
+});

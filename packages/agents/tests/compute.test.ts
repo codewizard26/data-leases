@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { MockComputeAdapter, ZeroGComputeAdapter, createComputeAdapter } from '../src/compute.js';
+import { MockComputeAdapter, ZeroGComputeAdapter, OpenRouterComputeAdapter, createComputeAdapter } from '../src/compute.js';
 
 const options = { baseUrl: 'https://provider.example/v1/proxy', apiKey: 'app-sk-private', model: 'test-model' };
 const input = { messages: [{ role: 'user' as const, content: 'Explain the proposed terms.' }] };
@@ -46,5 +46,41 @@ describe('compute adapters', () => {
     expect(createComputeAdapter({})).toBeInstanceOf(MockComputeAdapter);
     expect(() => createComputeAdapter({ COMPUTE_PROVIDER: 'claude' })).toThrow('COMPUTE_PROVIDER_NOT_IMPLEMENTED');
     expect(() => createComputeAdapter({ COMPUTE_PROVIDER: '0g' })).toThrow('COMPUTE_INVALID_CONFIG');
+  });
+});
+
+describe('OpenRouter free compute', () => {
+  test('uses fixed endpoint, free model and actual returned model', async () => {
+    let request: Request | undefined;
+    const adapter = new OpenRouterComputeAdapter({ apiKey: 'private-key' }, async (url, init) => {
+      request = new Request(url, init);
+      return Response.json({ model: 'vendor/model:free', choices: [{ message: { content: 'Free response' } }] });
+    });
+    expect(await adapter.generate(input)).toEqual({ provider: 'OPENROUTER', model: 'vendor/model:free', text: 'Free response' });
+    expect(request?.url).toBe('https://openrouter.ai/api/v1/chat/completions');
+    expect(request?.headers.get('authorization')).toBe('Bearer private-key');
+    expect(await request?.json()).toEqual({ model: 'openrouter/free', messages: input.messages, max_tokens: 1024, temperature: 0 });
+  });
+  test('rejects paid, empty and malformed model selectors', () => {
+    for (const model of ['anthropic/claude-sonnet-4', '', 'openrouter/auto', 'vendor/model:free ', ':free', 'https://evil.example/:free']) {
+      expect(() => new OpenRouterComputeAdapter({ apiKey: 'key', model })).toThrow('COMPUTE_FREE_MODEL_REQUIRED');
+    }
+  });
+  test('factory selects OpenRouter and missing credentials fail closed', () => {
+    expect(createComputeAdapter({ COMPUTE_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'key' })).toBeInstanceOf(OpenRouterComputeAdapter);
+    expect(() => createComputeAdapter({ COMPUTE_PROVIDER: 'openrouter' })).toThrow('COMPUTE_INVALID_CONFIG');
+  });
+  test('rate limit failures are sanitized without retries', async () => {
+    let calls = 0;
+    const adapter = new OpenRouterComputeAdapter({ apiKey: 'private-key', model: 'vendor/model:free' }, async () => {
+      calls++;
+      return new Response('private-key upstream detail', { status: 429 });
+    });
+    await expect(adapter.generate(input)).rejects.toThrow('COMPUTE_HTTP_429');
+    expect(calls).toBe(1);
+  });
+  test('validates malformed completion and enforces response size', async () => {
+    await expect(new OpenRouterComputeAdapter({ apiKey: 'key' }, async () => Response.json({ choices: [] })).generate(input)).rejects.toThrow('COMPUTE_INVALID_RESPONSE');
+    await expect(new OpenRouterComputeAdapter({ apiKey: 'key' }, async () => new Response('x'.repeat(65537))).generate(input)).rejects.toThrow('COMPUTE_RESPONSE_TOO_LARGE');
   });
 });

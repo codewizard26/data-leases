@@ -37,6 +37,28 @@ A future Claude implementation plugs into `ComputeAdapter.generate` without chan
 
 ## Status and boundaries
 
-All providers are `DEMO_UNTRUSTED`. Current output proves transport and negotiation only. No answer delivery, dashboard, SSE, durable events, Parquet writer, CRE execution, payment, or Arkiv integration exists yet. Transcripts are in memory/stdout and disappear on restart. Provider state also resets on restart. The local provider has no authentication; it binds only to loopback and is not ready for public hosting.
+All providers are `DEMO_UNTRUSTED`. Current output proves transport and negotiation only. Mock answer delivery and a local development console are available. SSE, durable events, Parquet writing, CRE execution, payments, and Arkiv integration remain pending. Transcripts are in memory/stdout and disappear on restart. Provider state also resets on restart. The local provider has no authentication; it binds only to loopback and is not ready for public hosting.
 
 Contracts and fixtures are proposed v1 and still need both contributors' review. Read [CLAUDE.md](CLAUDE.md), [SKILLS.md](SKILLS.md), [AGENTS.md](AGENTS.md), and [integration contract](docs/INTEGRATION_CONTRACT.md) before expanding the implementation. CRE-owned paths remain separate.
+
+## Browser test console
+
+Configure OpenRouter in ignored `.env` as described in [compute setup](docs/COMPUTE.md), then run:
+
+```sh
+pnpm dev
+```
+
+Open `http://127.0.0.1:3000`. The local console provides negotiation transcripts and a separate AI prompt panel. Provider processes run on 4101 and 4102. This is a lightweight development console, not the planned Next.js dashboard. SSE, persistence, live data, and verification remain pending.
+
+## Mock use cases and communication walkthrough
+
+The console follows the navy/amber visual direction in `specs.md` and exposes three question templates:
+
+- Aave V3 USDC available liquidity: synthetic 1,250,000 USDC, encoded as raw six-decimal units.
+- Aave V3 USDC utilization: synthetic 67.5%, encoded as 6,750 basis points.
+- DAO treasury risk snapshot: illustrative synthetic score 32/100, extending the treasury-monitoring persona; no validated financial methodology.
+
+Select a template, set a price ceiling, and choose **Discover & negotiate**. At 350 minor units Provider A counters and agrees; Provider B rejects. At 250 neither delivers an answer. At 700 both agree. Inspect either provider's recorded exchange and raw data parts. Accepted terms return a second structured A2A data part containing a correlated `AnswerEnvelope`; the browser displays it as **MOCK / delivered unverified**. No contract address, chain block, signature, payment receipt or CRE proof is fabricated.
+
+The browser shows completed HTTP exchanges, not a live SSE stream. AI explanations are optional and separate from price decisions. **Use current run as context** prepares a summary prompt; sending it requires a separate click.

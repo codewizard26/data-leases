@@ -3,7 +3,7 @@ export interface ComputeInput {
   messages: ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }>;
 }
 export interface ComputeOutput {
-  provider: 'MOCK' | '0G' | 'CLAUDE';
+  provider: 'MOCK' | '0G' | 'CLAUDE' | 'OPENROUTER';
   model: string;
   text: string;
 }
@@ -26,28 +26,25 @@ export interface ZeroGComputeOptions {
 }
 const MAX_RESPONSE_BYTES = 65536;
 
-export class ZeroGComputeAdapter implements ComputeAdapter {
-  private readonly endpoint: string;
-  private readonly timeoutMs: number;
-  constructor(private readonly options: ZeroGComputeOptions, private readonly fetcher: typeof fetch = fetch) {
-    try {
-      const url = new URL(options.baseUrl);
-      this.timeoutMs = options.timeoutMs ?? 15000;
-      if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.pathname.replace(/\/$/, '') !== '/v1/proxy' || !options.apiKey.trim() || !options.model.trim() || !Number.isInteger(this.timeoutMs) || this.timeoutMs < 1 || this.timeoutMs > 60000) throw new Error();
-      this.endpoint = `${url.origin}/v1/proxy/chat/completions`;
-    } catch {
-      throw new Error('COMPUTE_INVALID_CONFIG');
-    }
-  }
+interface ChatCompletionOptions {
+  endpoint: string;
+  apiKey: string;
+  model: string;
+  provider: '0G' | 'OPENROUTER';
+  timeoutMs: number;
+  maxTokens: number;
+}
+class ChatCompletionAdapter implements ComputeAdapter {
+  constructor(private readonly options: ChatCompletionOptions, private readonly fetcher: typeof fetch = fetch) {}
   async generate(input: ComputeInput): Promise<ComputeOutput> {
     if (!input.messages.length || input.messages.length > 20 || input.messages.some(message => !['system', 'user', 'assistant'].includes(message.role) || typeof message.content !== 'string' || message.content.length > 8000)) throw new Error('COMPUTE_INVALID_INPUT');
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), this.options.timeoutMs);
     try {
-      const response = await this.fetcher(this.endpoint, {
+      const response = await this.fetcher(this.options.endpoint, {
         method: 'POST', redirect: 'error', signal: controller.signal,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.options.apiKey}` },
-        body: JSON.stringify({ model: this.options.model, messages: input.messages, max_tokens: 256, temperature: 0 }),
+        body: JSON.stringify({ model: this.options.model, messages: input.messages, max_tokens: this.options.maxTokens, temperature: 0 }),
       });
       if (!response.ok) throw new Error(`COMPUTE_HTTP_${response.status}`);
       const reader = response.body?.getReader();
@@ -69,7 +66,7 @@ export class ZeroGComputeAdapter implements ComputeAdapter {
       if (typeof data !== 'object' || data === null || !('choices' in data) || !Array.isArray(data.choices)) throw new Error('COMPUTE_INVALID_RESPONSE');
       const first: unknown = data.choices[0];
       if (typeof first !== 'object' || first === null || !('message' in first) || typeof first.message !== 'object' || first.message === null || !('content' in first.message) || typeof first.message.content !== 'string' || !first.message.content.trim()) throw new Error('COMPUTE_INVALID_RESPONSE');
-      return { provider: '0G', model: this.options.model, text: first.message.content };
+      return { provider: this.options.provider, model: this.options.provider === 'OPENROUTER' && 'model' in data && typeof data.model === 'string' && data.model.trim() ? data.model : this.options.model, text: first.message.content };
     } catch (error) {
       if (error instanceof Error && /^COMPUTE_(HTTP_\d{3}|INVALID_RESPONSE|RESPONSE_TOO_LARGE)$/.test(error.message)) throw error;
       throw new Error('COMPUTE_UNAVAILABLE');
@@ -79,9 +76,39 @@ export class ZeroGComputeAdapter implements ComputeAdapter {
   }
 }
 
+export class ZeroGComputeAdapter extends ChatCompletionAdapter {
+  constructor(options: ZeroGComputeOptions, fetcher: typeof fetch = fetch) {
+    let endpoint: string;
+    const timeoutMs = options.timeoutMs ?? 15000;
+    try {
+      const url = new URL(options.baseUrl);
+      if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.pathname.replace(/\/$/, '') !== '/v1/proxy' || !options.apiKey.trim() || !options.model.trim() || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000) throw new Error();
+      endpoint = `${url.origin}/v1/proxy/chat/completions`;
+    } catch {
+      throw new Error('COMPUTE_INVALID_CONFIG');
+    }
+    super({ endpoint, timeoutMs, apiKey: options.apiKey, model: options.model, provider: '0G', maxTokens: 256 }, fetcher);
+  }
+}
+
+export interface OpenRouterComputeOptions {
+  apiKey: string;
+  /** Only the free router or explicit :free variants are permitted. */
+  model?: string;
+}
+export class OpenRouterComputeAdapter extends ChatCompletionAdapter {
+  constructor(options: OpenRouterComputeOptions, fetcher: typeof fetch = fetch) {
+    const model = options.model ?? 'openrouter/free';
+    if (model !== 'openrouter/free' && !/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+:free$/.test(model)) throw new Error('COMPUTE_FREE_MODEL_REQUIRED');
+    if (!options.apiKey.trim()) throw new Error('COMPUTE_INVALID_CONFIG');
+    super({ endpoint: 'https://openrouter.ai/api/v1/chat/completions', apiKey: options.apiKey, model, provider: 'OPENROUTER', timeoutMs: 60000, maxTokens: 1024 }, fetcher);
+  }
+}
+
 export function createComputeAdapter(environment: Record<string, string | undefined> = process.env): ComputeAdapter {
   const provider = environment.COMPUTE_PROVIDER ?? 'mock';
   if (provider === 'mock') return new MockComputeAdapter();
+  if (provider === 'openrouter') return new OpenRouterComputeAdapter({ apiKey: environment.OPENROUTER_API_KEY ?? '', model: environment.OPENROUTER_MODEL ?? 'openrouter/free' });
   if (provider !== '0g') throw new Error('COMPUTE_PROVIDER_NOT_IMPLEMENTED');
   return new ZeroGComputeAdapter({
     baseUrl: environment.ZERO_G_BASE_URL ?? '',
