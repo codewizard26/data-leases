@@ -3,7 +3,7 @@ import { AnswerEnvelopeSchema } from '@data-leases/contracts';
 import * as agents from '../src/index.js';
 const templates = ['AAVE_V3_USDC_AVAILABLE_LIQUIDITY', 'AAVE_V3_USDC_RESERVE_UTILIZATION', 'DAO_TREASURY_RISK_SNAPSHOT'];
 test('catalog marks every measurement synthetic and separates roadmap extension', () => {
- expect(agents.DEMO_SCENARIOS).toHaveLength(3);
+ expect(agents.DEMO_SCENARIOS).toHaveLength(4);
  expect(agents.DEMO_SCENARIOS.every(scenario => scenario.demoTrustMode === 'UNTRUSTED_MOCK')).toBe(true);
  expect(agents.DEMO_SCENARIOS[2]?.description).toContain('Illustrative extension');
 });
@@ -40,4 +40,18 @@ test('below-floor negotiations deliver no answer', async () => {
 });
 test('unknown question templates fail before contacting an agent', async () => {
  await expect(agents.negotiate({ baseUrl: 'http://127.0.0.1:1', providerId: 'unreachable', maxPriceMinor: '1', questionTemplateId: 'UNRESTRICTED_PROMPT' })).rejects.toThrow('UNSUPPORTED_QUESTION_TEMPLATE');
+});
+
+test('LINK decimals negotiates policy-specific terms and remains an unverified mock answer', async () => {
+ const provider = await agents.startProvider({ port: 0, providerId: 'link-provider', askMinor: '500', floorMinor: '300' });
+ try {
+  const result = await agents.negotiate({ baseUrl: provider.baseUrl, providerId: 'link-provider', maxPriceMinor: '350', questionTemplateId: 'ERC20_TOKEN_METADATA' });
+  expect(result.status).toBe('AGREED');
+  if (!('answer' in result)) throw new Error('Expected delivered answer');
+  expect(result.answer).toMatchObject({ questionTemplateId: 'ERC20_TOKEN_METADATA', metric: 'ERC20_DECIMALS', unit: 'decimal-places', value: '18', evidencePolicyId: 'link-decimals-v1', methodologyVersion: 'link-decimals-v1', sourceContract: '0x514910771af9ca656af840dff83e8264ecf986ca', demoTrustMode: 'UNTRUSTED_MOCK' });
+  expect(result.answer.sourceBlockNumber).toBeUndefined();
+  expect(result.answer.sourceBlockHash).toBeUndefined();
+  expect(result.deliveryStatus).toBe('DELIVERED_UNVERIFIED');
+  expect(result.transcript.every(turn => turn.evidencePolicyId === 'link-decimals-v1')).toBe(true);
+ } finally { await provider.close(); }
 });

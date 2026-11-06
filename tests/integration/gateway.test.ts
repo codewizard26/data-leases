@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { startProvider } from '../../packages/agents/src/index.js';
 import * as agents from '../../packages/agents/src/index.js';
+import { MockVerificationClient } from '../../packages/cre-adapter/src/index.js';
 import * as gateway from '../../apps/agent-gateway/src/server.js';
 const cleanup: Array<() => Promise<void>> = [];
 beforeEach(() => { vi.stubEnv('COMPUTE_PROVIDER', 'mock'); });
@@ -49,12 +50,12 @@ test.each([['COMPUTE_HTTP_429',429,'COMPUTE_RATE_LIMITED'],['COMPUTE_HTTP_401',5
   expect(response.status).toBe(status); expect(await response.json()).toEqual({error:code});
 });
 
-test('templates expose three explicit mock use cases', async () => {
+test('templates expose four explicit mock use cases', async () => {
   const server = await start();
   const response = await fetch(`${server.baseUrl}/api/templates`);
   expect(response.status).toBe(200);
   const body = await response.json();
-  expect(body.templates.map((item: {id: string}) => item.id)).toEqual(['aave-usdc-liquidity','aave-usdc-utilization','dao-treasury-risk']);
+  expect(body.templates.map((item: {id: string}) => item.id)).toEqual(['aave-usdc-liquidity','aave-usdc-utilization','dao-treasury-risk','link-token-decimals']);
   expect(body.templates.every((item: {demoTrustMode: string}) => item.demoTrustMode === 'UNTRUSTED_MOCK')).toBe(true);
 });
 test('rejects unknown question template before contacting providers', async () => {
@@ -71,7 +72,7 @@ test('selected mock scenario returns correlated answer and transport details', a
   const response = await fetch(`${server.baseUrl}/api/negotiate`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({maxPriceMinor:'400',questionTemplateId:'AAVE_V3_USDC_AVAILABLE_LIQUIDITY'})});
   const body = await response.json();
   expect(response.status).toBe(200);
-  expect(body.results[0]).toMatchObject({protocol:'A2A 1.0 JSONRPC',cardUrl:`${a.baseUrl}/.well-known/agent-card.json`,a2aEndpoint:`${a.baseUrl}/a2a`, stages:{discovery:'DISCOVERED',negotiation:'AGREED',answer:'DELIVERED_UNVERIFIED',verification:'NOT_REQUESTED',payment:'DISABLED'},answer:{questionTemplateId:'AAVE_V3_USDC_AVAILABLE_LIQUIDITY',demoTrustMode:'UNTRUSTED_MOCK'}});
+  expect(body.results[0]).toMatchObject({protocol:'A2A 1.0 JSONRPC',cardUrl:`${a.baseUrl}/.well-known/agent-card.json`,a2aEndpoint:`${a.baseUrl}/a2a`, stages:{discovery:'DISCOVERED',negotiation:'AGREED',answer:'DELIVERED_UNVERIFIED',verification:'MOCK:INCONCLUSIVE',payment:'DISABLED'},answer:{questionTemplateId:'AAVE_V3_USDC_AVAILABLE_LIQUIDITY',demoTrustMode:'UNTRUSTED_MOCK'}});
   expect(body.results[0].answer.runId).toBe(body.results[0].runId);
 });
 
@@ -80,4 +81,32 @@ test('demo workspace is available separately from the landing page', async () =>
   const response = await fetch(`${server.baseUrl}/demo`);
   expect(response.status).toBe(200);
   expect(await response.text()).toContain('template-gallery');
+});
+
+test('LINK delivery invokes mock verification without inventing independent evidence', async () => {
+  const a = await startProvider({port:0,providerId:'provider-a',askMinor:'500',floorMinor:'300'});
+  const b = await startProvider({port:0,providerId:'provider-b',askMinor:'600',floorMinor:'500'});
+  cleanup.push(a.close,b.close);
+  const server = await gateway.startGateway({port:0,providerOrigins:[a.baseUrl,b.baseUrl]});cleanup.push(server.close);
+  const response = await fetch(`${server.baseUrl}/api/negotiate`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({maxPriceMinor:'350',questionTemplateId:'ERC20_TOKEN_METADATA'})});
+  const body = await response.json();
+  expect(response.status).toBe(200);
+  const agreed = body.results[0];
+  expect(agreed).toMatchObject({status:'AGREED',answer:{value:'18',unit:'decimal-places'}, verification:{executionMode:'MOCK',status:'INCONCLUSIVE'},stages:{verification:'MOCK:INCONCLUSIVE'}});
+  expect(agreed.verification.runId).toBe(agreed.runId);
+  expect(agreed.verification.providerId).toBe('provider-a');
+  expect(agreed.verification.checks).toEqual(expect.arrayContaining([expect.objectContaining({checkId:'ONCHAIN_REFERENCE_MATCH',status:'UNKNOWN'})]));
+  expect(body.results[1].verification).toBeUndefined();
+});
+
+test('verification adapter failure preserves delivered answer as inconclusive', async () => {
+  vi.spyOn(MockVerificationClient.prototype,'submit').mockRejectedValue(new Error('upstream private detail'));
+  const a = await startProvider({port:0,providerId:'provider-a',askMinor:'500',floorMinor:'300'});
+  const b = await startProvider({port:0,providerId:'provider-b',askMinor:'600',floorMinor:'500'});
+  cleanup.push(a.close,b.close);
+  const server = await gateway.startGateway({port:0,providerOrigins:[a.baseUrl,b.baseUrl]});cleanup.push(server.close);
+  const response = await fetch(`${server.baseUrl}/api/negotiate`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({maxPriceMinor:'350',questionTemplateId:'ERC20_TOKEN_METADATA'})});
+  const body = await response.json();
+  expect(body.results[0]).toMatchObject({status:'AGREED',answer:{value:'18'},verification:{executionMode:'MOCK',status:'INCONCLUSIVE',checks:[{checkId:'VERIFICATION_ADAPTER_AVAILABLE',status:'UNKNOWN',reasonCode:'ADAPTER_UNAVAILABLE'}]}});
+  expect(JSON.stringify(body)).not.toContain('upstream private detail');
 });

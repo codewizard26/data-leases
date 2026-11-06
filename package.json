@@ -15,7 +15,9 @@
     "demo:a2a": "tsx scripts/demo.ts",
     "dev:provider": "tsx apps/provider-agent/src/main.ts",
     "demo:buyer": "tsx apps/agent-gateway/src/buyer.ts",
-    "dev": "node --env-file=.env --import tsx scripts/dev.ts"
+    "dev": "node --env-file=.env --import tsx scripts/dev.ts",
+    "cre:prepare": "pnpm --filter @data-leases/cre-adapter cre:prepare",
+    "cre:simulate": "pnpm --filter @data-leases/cre-adapter cre:simulate"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",
@@ -26,7 +28,9 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.48.1",
     "vitest": "3.2.4",
-    "zod": "3.25.76"
+    "zod": "3.25.76",
+    "@data-leases/contracts": "workspace:*",
+    "@data-leases/cre-adapter": "workspace:*"
   },
   "type": "module"
 }

@@ -57,7 +57,7 @@ export async function startProvider(options: ProviderOptions) {
    let action: NegotiationMessage['action'] = 'REJECT';
    let reasonCode = 'INVALID_TERMS';
    let priceMinor = options.askMinor;
-   const valid = Boolean(input.runId) && input.toAgentId === options.providerId && Boolean(scenarioForTemplate(input.questionTemplateId)) && input.currency === 'demo:USD6' && input.evidencePolicyId === 'demo-policy-v1';
+   const valid = Boolean(input.runId) && input.toAgentId === options.providerId && Boolean(scenarioForTemplate(input.questionTemplateId)) && input.currency === 'demo:USD6' && input.evidencePolicyId === scenarioForTemplate(input.questionTemplateId)?.evidencePolicyId;
    const bindingValid = !previous || (previous.fromAgentId === input.toAgentId && previous.toAgentId === input.fromAgentId && previous.sessionId === input.sessionId && previous.runId === input.runId && previous.questionTemplateId === input.questionTemplateId && previous.maxAgeSeconds === input.maxAgeSeconds && previous.deliverySlaSeconds === input.deliverySlaSeconds && previous.expiresAt === input.expiresAt);
    if (Date.parse(input.expiresAt) <= Date.now()) { action = 'EXPIRE'; reasonCode = 'DEADLINE_EXCEEDED'; }
    else if (valid && input.action === 'REQUEST_FOR_QUOTE' && !previous) { action = 'PROPOSE'; reasonCode = 'ASK'; }
@@ -71,7 +71,7 @@ export async function startProvider(options: ProviderOptions) {
    const parts = [dataPart(reply)];
    if (action === 'ACCEPT') {
     const scenario = scenarioForTemplate(input.questionTemplateId)!;
-    const answer = AnswerEnvelopeSchema.parse({ schemaVersion: '1.0.0', sessionId: reply.sessionId, negotiationId: reply.negotiationId, runId: reply.runId, questionTemplateId: reply.questionTemplateId, providerId: options.providerId, acceptedQuoteId: reply.quoteId, deliveredAt: new Date().toISOString(), chainId: scenario.chainId, metric: scenario.metric, value: scenario.value, unit: scenario.unit, methodologyVersion: 'synthetic-demo-v1', evidenceRefs: [`mock:scenario:${scenario.id}`], evidencePolicyId: reply.evidencePolicyId, demoTrustMode: 'UNTRUSTED_MOCK' });
+    const answer = AnswerEnvelopeSchema.parse({ schemaVersion: '1.0.0', sessionId: reply.sessionId, negotiationId: reply.negotiationId, runId: reply.runId, questionTemplateId: reply.questionTemplateId, providerId: options.providerId, acceptedQuoteId: reply.quoteId, deliveredAt: new Date().toISOString(), chainId: scenario.chainId, metric: scenario.metric, value: scenario.value, unit: scenario.unit, methodologyVersion: scenario.methodologyVersion, sourceContract: scenario.sourceContract, evidenceRefs: [`mock:scenario:${scenario.id}`], evidencePolicyId: reply.evidencePolicyId, demoTrustMode: 'UNTRUSTED_MOCK' });
     parts.push({ content: { $case: 'data', value: answer }, mediaType: ANSWER_MEDIA_TYPE, filename: '', metadata: undefined });
    }
    bus.publish({ kind: 'message', data: makeMessage({ messageId: reply.messageId, contextId: context.contextId, role: Role.ROLE_AGENT, parts }) });
@@ -110,7 +110,7 @@ export async function negotiate(options: BuyerOptions) {
  const client = await new ClientFactory({ transports: [new JsonRpcTransportFactory({ fetchImpl: boundedFetch })] }).createFromAgentCard(card);
  const runId = randomUUID();
  const transcript: NegotiationMessage[] = [];
- let request: NegotiationMessage = NegotiationMessageSchema.parse({ schemaVersion: '1.0.0', sessionId: randomUUID(), negotiationId: randomUUID(), runId, messageId: randomUUID(), action: 'REQUEST_FOR_QUOTE', fromAgentId: 'buyer', toAgentId: options.providerId, round: 1, questionTemplateId, evidencePolicyId: 'demo-policy-v1', maxAgeSeconds: 60, currency: 'demo:USD6', expiresAt: originalDeadline });
+ let request: NegotiationMessage = NegotiationMessageSchema.parse({ schemaVersion: '1.0.0', sessionId: randomUUID(), negotiationId: randomUUID(), runId, messageId: randomUUID(), action: 'REQUEST_FOR_QUOTE', fromAgentId: 'buyer', toAgentId: options.providerId, round: 1, questionTemplateId, evidencePolicyId: scenario.evidencePolicyId, maxAgeSeconds: 60, currency: 'demo:USD6', expiresAt: originalDeadline });
  for (let round = 1; round <= 3; round++) {
   if (Math.min(Date.parse(originalDeadline), Date.parse(request.expiresAt)) <= Date.now()) return { status: 'EXPIRED' as const, runId, transcript };
   request = { ...request, round, messageId: randomUUID() };
@@ -128,7 +128,7 @@ export async function negotiate(options: BuyerOptions) {
    const answerPart = result.parts.find(part => part.mediaType === ANSWER_MEDIA_TYPE && part.content?.$case === 'data');
    if (!answerPart || answerPart.content?.$case !== 'data') throw new Error('ANSWER_DATA_REQUIRED');
    const answer: AnswerEnvelope = AnswerEnvelopeSchema.parse(answerPart.content.value);
-   if (answer.runId !== runId || answer.sessionId !== request.sessionId || answer.negotiationId !== request.negotiationId || answer.questionTemplateId !== questionTemplateId || answer.providerId !== options.providerId || answer.acceptedQuoteId !== request.quoteId || answer.evidencePolicyId !== request.evidencePolicyId || answer.chainId !== scenario.chainId || answer.metric !== scenario.metric || answer.unit !== scenario.unit || answer.demoTrustMode !== 'UNTRUSTED_MOCK') throw new Error('ANSWER_BINDING_MISMATCH');
+   if (answer.runId !== runId || answer.sessionId !== request.sessionId || answer.negotiationId !== request.negotiationId || answer.questionTemplateId !== questionTemplateId || answer.providerId !== options.providerId || answer.acceptedQuoteId !== request.quoteId || answer.evidencePolicyId !== request.evidencePolicyId || answer.chainId !== scenario.chainId || answer.metric !== scenario.metric || answer.unit !== scenario.unit || answer.methodologyVersion !== scenario.methodologyVersion || answer.sourceContract !== scenario.sourceContract || answer.demoTrustMode !== 'UNTRUSTED_MOCK') throw new Error('ANSWER_BINDING_MISMATCH');
    return { status: 'AGREED' as const, deliveryStatus: 'DELIVERED_UNVERIFIED' as const, priceMinor: reply.priceMinor, runId, transcript, answer };
   }
   if (reply.action !== 'PROPOSE') throw new Error('UNEXPECTED_NEGOTIATION_ACTION');

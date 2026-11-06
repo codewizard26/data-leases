@@ -3,10 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./policy": "./src/policy.ts",
+    "./digest": "./src/digest.ts"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run ../../tests/cre --root ../..",
+    "cre:prepare": "bun scripts/prepare.ts",
+    "cre:simulate": "bun scripts/simulate.ts"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.0"
+  },
+  "dependencies": {
+    "@data-leases/contracts": "workspace:*",
+    "@noble/hashes": "2.2.0"
   }
 }

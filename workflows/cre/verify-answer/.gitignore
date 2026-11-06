@@ -1,0 +1,3 @@
+# CRE CLI compiler output; source, fixtures and sanitized evidence are tracked separately.
+.cre_build_tmp.js
+*.wasm

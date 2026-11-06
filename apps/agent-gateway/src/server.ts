@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { MockVerificationClient } from '@data-leases/cre-adapter';
+import { VerificationRequestSchema, VerificationResultSchema, type AnswerEnvelope, type VerificationResult } from '@data-leases/contracts';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
@@ -33,6 +36,29 @@ function localOrigin(value: string): string {
   const url = new URL(value);
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== '/' || url.username || url.password || url.search || url.hash) throw new Error('INVALID_LOCAL_PROVIDER_ORIGIN');
   return url.origin;
+}
+/** The live demo intentionally supplies no independent evidence to the mock verifier. */
+async function verifyDeliveredAnswer(answer: AnswerEnvelope): Promise<VerificationResult> {
+  const verificationId = randomUUID();
+  try {
+    const input = VerificationRequestSchema.parse({schemaVersion:'1.0.0', verificationId,
+      runId:answer.runId, sessionId:answer.sessionId, providerId:answer.providerId,
+      questionTemplateId:answer.questionTemplateId, answer,
+      policy:{policyId:answer.evidencePolicyId,version:'1.0.0',allowedChainIds:[answer.chainId],
+        allowedMetricIds:[answer.metric],maxAgeSeconds:60,maxAbsDeltaRaw:'0'},
+      requestedAt:new Date().toISOString()});
+    const client = new MockVerificationClient();
+    await client.submit(input);
+    const result = await client.getResult(verificationId);
+    if (!result) throw new Error('VERIFICATION_RESULT_UNAVAILABLE');
+    return VerificationResultSchema.parse(result);
+  } catch {
+    // Keep the delivered answer even if the adapter cannot evaluate it.
+    return VerificationResultSchema.parse({schemaVersion:'1.0.0',verificationId,runId:answer.runId,
+      providerId:answer.providerId,executionMode:'MOCK',status:'INCONCLUSIVE',
+      checks:[{checkId:'VERIFICATION_ADAPTER_AVAILABLE',status:'UNKNOWN',reasonCode:'ADAPTER_UNAVAILABLE'}],
+      executedAt:new Date().toISOString(),evidenceRefs:[]});
+  }
 }
 export async function startGateway(options: GatewayOptions = {}) {
   const origins = options.providerOrigins ?? ['http://127.0.0.1:4101', 'http://127.0.0.1:4102'];
@@ -73,7 +99,8 @@ export async function startGateway(options: GatewayOptions = {}) {
         const connection = {providerId:provider.providerId, cardUrl:`${provider.origin}/.well-known/agent-card.json`, a2aEndpoint:`${provider.origin}/a2a`, protocol:'A2A 1.0 JSONRPC', discoverySource:'LOCAL_REGISTRY'};
         try {
           const result = await negotiate({baseUrl:provider.origin, providerId:provider.providerId, maxPriceMinor, questionTemplateId});
-          return {...connection, ...result, stages:{discovery:'DISCOVERED', negotiation:result.status, answer:'answer' in result ? 'DELIVERED_UNVERIFIED' : 'NOT_REQUESTED', verification:'NOT_REQUESTED', payment:'DISABLED'}};
+          const verification = result.answer ? await verifyDeliveredAnswer(result.answer) : undefined;
+          return {...connection, ...result, ...(verification ? {verification} : {}), stages:{discovery:'DISCOVERED', negotiation:result.status, answer:result.answer ? 'DELIVERED_UNVERIFIED' : 'NOT_REQUESTED', verification:verification ? `${verification.executionMode}:${verification.status}` : 'NOT_REQUESTED', payment:'DISABLED'}};
         }
         catch { return {...connection, status:'FAILED', error:'NEGOTIATION_FAILED', transcript:[], stages:{discovery:'UNKNOWN', negotiation:'FAILED', answer:'NOT_REQUESTED', verification:'NOT_REQUESTED', payment:'DISABLED'}}; }
       }));

@@ -5,7 +5,9 @@
   "type": "module",
   "dependencies": {
     "@data-leases/agents": "workspace:*",
-    "@data-leases/discovery": "workspace:*"
+    "@data-leases/discovery": "workspace:*",
+    "@data-leases/contracts": "workspace:*",
+    "@data-leases/cre-adapter": "workspace:*"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

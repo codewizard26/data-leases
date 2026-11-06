@@ -1,0 +1,16 @@
+HISTORICAL FAILURE — resolved by authenticated simulations on 2026-11-07 (Asia/Kolkata).
+See accepted.log, rejected.log and inconclusive.log in this directory.
+
+CRE CLI version v1.39.0
+Command (from workflows/cre):
+cre workflow simulate verify-answer --target local-simulation --non-interactive --trigger-index 0 --http-payload ../../data/tmp/cre/request.json
+
+Observed during implementation on 2026-11-06:
+Initializing...
+! You are not logged in
+Authentication required: not logged in and no CRE_API_KEY set
+Run 'cre login' interactively, or set CRE_API_KEY locally.
+Exit status: 1
+
+At the time of this historical attempt, no successful CRE CLI simulation had been recorded.
+The wrapper uses an absolute request path; the relative path above is illustrative.

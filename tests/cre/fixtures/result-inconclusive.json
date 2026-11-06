@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "1.0.0",
+  "verificationId": "verification-fixture",
+  "runId": "run-fixture",
+  "providerId": "cre-demo-provider",
+  "executionMode": "MOCK",
+  "status": "INCONCLUSIVE",
+  "checks": [
+    {
+      "checkId": "ANSWER_SCHEMA_VALID",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "POLICY_SUPPORTED",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "SOURCE_CHAIN_SUPPORTED",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "SOURCE_CONTRACT_ALLOWED",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "METRIC_UNITS_MATCH",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "ANSWER_FRESHNESS_VALID",
+      "status": "PASS",
+      "reasonCode": "VALIDATION_PASSED"
+    },
+    {
+      "checkId": "SOURCE_BLOCK_REFERENCE_VALID",
+      "status": "UNKNOWN",
+      "reasonCode": "REFERENCE_UNAVAILABLE"
+    },
+    {
+      "checkId": "SOURCE_FRESHNESS_VALID",
+      "status": "UNKNOWN",
+      "reasonCode": "REFERENCE_UNAVAILABLE"
+    },
+    {
+      "checkId": "ONCHAIN_REFERENCE_MATCH",
+      "status": "UNKNOWN",
+      "expected": "18",
+      "reasonCode": "VALUE_MISMATCH"
+    },
+    {
+      "checkId": "EXTERNAL_HTTP_REFERENCE_MATCH",
+      "status": "UNKNOWN",
+      "reasonCode": "REFERENCE_UNAVAILABLE"
+    }
+  ],
+  "executedAt": "2026-11-06T12:00:00.000Z",
+  "evidenceRefs": []
+}

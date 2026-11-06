@@ -66,3 +66,9 @@ The browser shows completed HTTP exchanges, not a live SSE stream. AI explanatio
 ## CRE branch review
 
 The teammate CRE branch was reviewed without merging. See [integration review](docs/CRE_REVIEW.md) for verified checks, contract reconciliation, supported metric limits, and remaining fixes.
+
+## LINK decimals and CRE integration
+
+The fourth question card negotiates LINK token decimals (`ERC20_TOKEN_METADATA`, `link-decimals-v1`). The synthetic answer is 18 decimal places and identifies the LINK contract, without fabricating a block reference. Gateway verification uses the shared `MockVerificationClient`; missing independent evidence returns `MOCK / INCONCLUSIVE`. Unsupported Aave/treasury methods also remain inconclusive. Expand the receipt to inspect individual checks.
+
+All teammate CRE workflow, tooling and saved simulation evidence are included. See [CRE handoff](docs/CRE_HANDOFF.md) for Bun/CLI installation, authentication and fresh simulation reproduction. Recorded CLI results are historical evidence, not verification of a fresh buyer run.

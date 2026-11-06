@@ -29,3 +29,7 @@ Replacing the isolated branch's contracts entry point with our canonical current
 5. Run a fresh authenticated CLI simulation locally and preserve redacted evidence before claiming a current successful simulation.
 
 No teammate branch files were modified or merged during this review.
+
+## Integration resolution
+
+The requested merge preserves canonical shared contracts and their safeguards, adds the LINK-decimals scenario, maps unsupported methods to INCONCLUSIVE, and hashes artifact filenames. CRE tests now follow the canonical schema error behavior. Gateway consumes MockVerificationClient and displays mode/check results; synthetic LINK answers intentionally omit a block reference, so they remain inconclusive without independent evidence. Recorded simulation artifacts are preserved separately and are not relabeled as fresh demo verification.
