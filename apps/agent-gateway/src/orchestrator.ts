@@ -1,3 +1,4 @@
+import {eventDisclosure} from './data-access.js';
 import {EventEmitter} from 'node:events';
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
@@ -21,7 +22,7 @@ export class RunOrchestrator {
  history(){return this.config.leases.runs() as RunState[];}
  private save(run:RunState){this.config.leases.save(run.runId,run);}
  private emit(run:RunState,eventType:ConversationEvent['eventType'],status:string,payload:unknown,providerId?:string,message?:NegotiationMessage,direction:ConversationEvent['direction']='INTERNAL'){
-  const event=this.config.store.append({schemaVersion:'1.0.0',eventId:randomUUID(),sessionId:run.sessionId,runId:run.runId,negotiationId:message?.negotiationId,messageId:message?.messageId,occurredAt:new Date().toISOString(),eventType,actorRole:message?(direction==='OUT'?'BUYER_AGENT':'PROVIDER_AGENT'):'GATEWAY',actorId:message?.fromAgentId??'orchestrator',providerId,direction,status,priceMinor:message?.priceMinor,currency:message?.currency,payload});this.events.emit(run.sessionId,event);
+  const event=this.config.store.append({schemaVersion:'1.0.0',eventId:randomUUID(),sessionId:run.sessionId,runId:run.runId,negotiationId:message?.negotiationId,messageId:message?.messageId,occurredAt:new Date().toISOString(),eventType,actorRole:message?(direction==='OUT'?'BUYER_AGENT':'PROVIDER_AGENT'):'GATEWAY',actorId:message?.fromAgentId??'orchestrator',providerId,direction,status,priceMinor:message?.priceMinor,currency:message?.currency,payload:eventDisclosure(run.answer?.questionTemplateId??run.quote?.questionTemplateId,payload)});this.events.emit(run.sessionId,event);
  }
  async discover(input:unknown):Promise<DiscoveredAgent[]>{
   const query=DiscoveryQuerySchema.parse(input);const urls=this.config.providers.map(p=>p.origin+'/.well-known/agent-card.json');const policy:LocalDiscoveryPolicy={allowedCardUrls:urls,allowedEndpointUrls:this.config.providers.map(p=>p.origin+'/a2a')};

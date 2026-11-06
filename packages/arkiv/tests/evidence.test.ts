@@ -45,3 +45,10 @@ test('valid unexpired offers are not excluded by the requested answer freshness 
  await client.findProviderOffers({schemaVersion:'1.0.0',sessionId:'discovery-test',mode:'ARKIV',questionTemplateId:offer.questionTemplateId,maxPriceMinor:'100',currency:offer.currency,maxAgeSeconds:1,requestedAt:now});
  expect(transport.queries.at(-1)?.filters.createdAfter).toBeUndefined();expect(transport.queries.at(-1)?.filters.expiresAfter).toBe(now);
 });
+
+test('private verification publishes hash-only receipts and refuses even an explicit value license',async()=>{
+ const verified=result();verified.status='INCONCLUSIVE';verified.checks=verified.checks.map(check=>({...check,status:'UNKNOWN'}));const {client,registry,transport}=setup({verified});
+ const privateRequest=VerificationRequestSchema.parse({...request,policy:{...request.policy,policyId:'private-demo-policy-v1'},answer:{...request.answer,evidencePolicyId:'private-demo-policy-v1'}});registry.getRequest=async()=>privateRequest;
+ await expect(client.publishAnswerReceipt(request.verificationId,{allowValue:true,licenseReference:'https://license.example/public'})).rejects.toThrow('PRIVATE_ANSWER_REDISTRIBUTION_FORBIDDEN');expect(transport.creates).toBe(0);
+ const entity=await client.publishAnswerReceipt(request.verificationId);expect(entity.record).toMatchObject({dataClassification:'PRIVATE',redistributionAllowed:false,source:{chainId:'eip155:1'}});expect(entity.record).not.toHaveProperty('value');if(entity.record.entityType==='AnswerReceipt'){expect(entity.record.source.contract).toBeUndefined();expect(AnswerReceiptSchema.safeParse({...entity.record,value:'18',redistributionAllowed:true,licenseReference:'https://license.example/public'}).success).toBe(false);expect(AnswerReceiptSchema.safeParse({...entity.record,source:{...entity.record.source,contract:request.answer.sourceContract}}).success).toBe(false);}
+});

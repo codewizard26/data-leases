@@ -1,3 +1,4 @@
+import {discloseRun} from './data-access.js';
 import type {ArkivEvidenceClient} from '@data-leases/arkiv';
 import {LeaseScheduler} from './lease-scheduler.js';
 import {EventStore} from '@data-leases/event-store';
@@ -14,7 +15,7 @@ import { VerificationRequestSchema, VerificationResultSchema, type NegotiationMe
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
-import { PaymentJournal, payHederaAnswer,reconcileHederaPayment, HEDERA_CURRENCY, createComputeAdapter, AiNegotiationStrategy, negotiate, DEMO_SCENARIOS, QUESTION_TEMPLATE } from '@data-leases/agents';
+import { PaymentJournal, payHederaAnswer,reconcileHederaPayment, HEDERA_CURRENCY, createComputeAdapter, AiNegotiationStrategy, negotiate, DEMO_SCENARIOS, publicTaskTemplate, QUESTION_TEMPLATE } from '@data-leases/agents';
 
 export interface GatewayOptions {
   port?: number;
@@ -110,8 +111,8 @@ export async function startGateway(options: GatewayOptions = {}) {
       if(metric!=='ERC20_DECIMALS')throw new RequestError(400,'UNSUPPORTED_EVIDENCE_METRIC');
       try{const answer=await options.evidenceQueries.queryLatestAcceptedAnswer({metric,maxAgeSeconds:86400});const receipts=answer&&'runId' in answer.record?await options.evidenceQueries.queryReceiptsByRunId(answer.record.runId):[];json(response,200,{answer,receipts});}catch{throw new RequestError(503,'ARKIV_QUERY_UNAVAILABLE');}return;
     }
-    if(request.method==='GET'&&path==='/api/runs'){json(response,200,{runs:orchestrator.history(),sessions:eventStore.sessions()});return;}
-    if(request.method==='GET'&&path.startsWith('/api/runs/')){const id=path.slice('/api/runs/'.length);const run=orchestrator.get(id);if(!run)throw new RequestError(404,'RUN_NOT_FOUND');json(response,200,run);return;}
+    if(request.method==='GET'&&path==='/api/runs'){json(response,200,{runs:orchestrator.history().map(run=>discloseRun(run,true)),sessions:eventStore.sessions()});return;}
+    if(request.method==='GET'&&path.startsWith('/api/runs/')){const id=path.slice('/api/runs/'.length);const run=orchestrator.get(id);if(!run)throw new RequestError(404,'RUN_NOT_FOUND');json(response,200,discloseRun(run));return;}
     if(request.method==='GET'&&path==='/api/leases'){json(response,200,{leases:leaseStore.schedules().map(row=>({...row,...leaseStore.get(row.leaseId)}))});return;}
     if(request.method==='GET'&&path.startsWith('/api/leases/')){try{json(response,200,leaseStore.get(path.slice('/api/leases/'.length)));}catch{throw new RequestError(404,'LEASE_NOT_FOUND');}return;}
     const feed=path.match(/^\/api\/sessions\/([a-zA-Z0-9-]+)\/events$/);
@@ -136,7 +137,7 @@ export async function startGateway(options: GatewayOptions = {}) {
       return;
     }
     if (request.method === 'GET' && path === '/api/templates') {
-      json(response, 200, {templates: DEMO_SCENARIOS.map(scenario=>scenario.questionTemplateId==='ERC20_TOKEN_METADATA'&&process.env.PROVIDER_LINK_SOURCE_ENABLED==='true'?{...scenario,synthetic:false,description:'LINK decimals from Ethereum RPC at an explicit source block. Independently checked by local CRE simulation; unsigned provider identity.'}:scenario)}); return;
+      json(response, 200, {templates: DEMO_SCENARIOS.filter(scenario=>!scenario.retired).map(raw=>{const scenario=publicTaskTemplate(raw);return scenario.questionTemplateId==='ERC20_TOKEN_METADATA'&&process.env.PROVIDER_LINK_SOURCE_ENABLED==='true'?{...scenario,synthetic:false,description:'LINK decimals from Ethereum RPC at an explicit source block. Independently checked by local CRE simulation; unsigned provider identity.'}:scenario;})}); return;
     }
     if(request.method==='GET'&&['/demo','/demo/','/dashboard','/dashboard/'].includes(path)){response.writeHead(302,{Location:'http://127.0.0.1:3001/dashboard','Cache-Control':'no-store'});response.end();return;}
     if (request.method === 'GET' && ['/', '/about', '/developer'].includes(path)) {
@@ -155,11 +156,11 @@ export async function startGateway(options: GatewayOptions = {}) {
       try{json(response,202,orchestrator.preview(Object.fromEntries(Object.entries(body).filter(([key])=>!['providerIds','maxRounds'].includes(key))),body.providerIds as string[]|undefined,body.maxRounds as number|undefined));}catch{throw new RequestError(400,'INVALID_PREVIEW');}return;
     }
     if(path==='/api/discovery'){try{json(response,200,{providers:await orchestrator.discover(body),arkivAvailable:Boolean(options.arkivClient)});}catch(error){throw new RequestError(400,error instanceof Error&&error.message==='ARKIV_NOT_CONFIGURED'?'ARKIV_NOT_CONFIGURED':'DISCOVERY_FAILED');}return;}
-    if(path==='/api/leases'){const parsed=LeasePolicySchema.safeParse(body);if(!parsed.success)throw new RequestError(400,'INVALID_LEASE_POLICY');if(!DEMO_SCENARIOS.some(s=>s.questionTemplateId===parsed.data.questionTemplateId))throw new RequestError(400,'INVALID_QUESTION_TEMPLATE');const cap=getPaymentSetup().maxTinybars;if(!cap||BigInt(parsed.data.perRequestTinybars)>BigInt(cap))throw new RequestError(400,'OPERATOR_CAP_EXCEEDED');let authorizedId:string|undefined;try{const lease=leaseStore.authorize(parsed.data);authorizedId=lease.policy.leaseId;scheduleEvent(lease.policy.leaseId,lease.policy.schedule?'RECURRING_LEASE_AUTHORIZED':'LEASE_AUTHORIZED',{policy:lease.policy});json(response,201,lease);}catch{if(authorizedId){leaseStore.cancel(authorizedId);throw new RequestError(503,'LEASE_AUTHORIZATION_AUDIT_FAILED');}throw new RequestError(400,'INVALID_LEASE_POLICY');}return;}
+    if(path==='/api/leases'){const parsed=LeasePolicySchema.safeParse(body);if(!parsed.success)throw new RequestError(400,'INVALID_LEASE_POLICY');if(!DEMO_SCENARIOS.some(s=>!s.retired&&s.questionTemplateId===parsed.data.questionTemplateId))throw new RequestError(400,'INVALID_QUESTION_TEMPLATE');const cap=getPaymentSetup().maxTinybars;if(!cap||BigInt(parsed.data.perRequestTinybars)>BigInt(cap))throw new RequestError(400,'OPERATOR_CAP_EXCEEDED');let authorizedId:string|undefined;try{const lease=leaseStore.authorize(parsed.data);authorizedId=lease.policy.leaseId;scheduleEvent(lease.policy.leaseId,lease.policy.schedule?'RECURRING_LEASE_AUTHORIZED':'LEASE_AUTHORIZED',{policy:lease.policy});json(response,201,lease);}catch{if(authorizedId){leaseStore.cancel(authorizedId);throw new RequestError(503,'LEASE_AUTHORIZATION_AUDIT_FAILED');}throw new RequestError(400,'INVALID_LEASE_POLICY');}return;}
     if(path==='/api/leases/control'){if(Object.keys(body).some(key=>!['leaseId','action'].includes(key))||typeof body.leaseId!=='string'||!['PAUSE','RESUME','CANCEL'].includes(String(body.action)))throw new RequestError(400,'INVALID_LEASE_ACTION');try{leaseStore.controlSchedule(body.leaseId,body.action as 'PAUSE'|'RESUME'|'CANCEL');scheduleEvent(body.leaseId,'LEASE_'+body.action,{});json(response,200,{status:leaseStore.schedule(body.leaseId)?.state});}catch(error){throw new RequestError(409,error instanceof Error&&/^[A-Z_]+$/.test(error.message)?error.message:'LEASE_CONTROL_FAILED');}return;}
     if(path==='/api/leases/cancel'){if(typeof body.leaseId!=='string')throw new RequestError(400,'INVALID_LEASE');leaseStore.cancel(body.leaseId);json(response,200,{status:'CANCELLED'});return;}
-    if(path==='/api/runs'){const input=RunInputSchema.safeParse(body);if(!input.success)throw new RequestError(400,'INVALID_RUN');try{json(response,202,orchestrator.start(input.data));}catch{throw new RequestError(409,'RUN_NOT_STARTED');}return;}
-    if(path==='/api/runs/refresh'||path==='/api/runs/publication'){if(typeof body.runId!=='string')throw new RequestError(400,'INVALID_RUN');try{const result=path.endsWith('refresh')?await orchestrator.refreshVerification(body.runId):await orchestrator.retryPublication(body.runId);json(response,200,result);}catch{throw new RequestError(409,'RUN_RETRY_UNAVAILABLE');}return;}
+    if(path==='/api/runs'){const input=RunInputSchema.safeParse(body);if(!input.success)throw new RequestError(400,'INVALID_RUN');try{json(response,202,discloseRun(orchestrator.start(input.data)));}catch{throw new RequestError(409,'RUN_NOT_STARTED');}return;}
+    if(path==='/api/runs/refresh'||path==='/api/runs/publication'){if(typeof body.runId!=='string')throw new RequestError(400,'INVALID_RUN');try{const result=path.endsWith('refresh')?await orchestrator.refreshVerification(body.runId):await orchestrator.retryPublication(body.runId);json(response,200,result?discloseRun(result):result);}catch{throw new RequestError(409,'RUN_RETRY_UNAVAILABLE');}return;}
     if (path === '/api/cre/simulate') {
       if (Object.keys(body).length !== 1 || typeof body.case !== 'string' || !['valid','tampered','inconclusive'].includes(body.case)) throw new RequestError(400,'INVALID_CRE_CASE');
       try { json(response,202,creRunner.start(body.case as 'valid'|'tampered'|'inconclusive')); }
@@ -168,7 +169,7 @@ export async function startGateway(options: GatewayOptions = {}) {
     }
 
     if(path==='/api/quotes'){
-      if(Object.keys(body).some(k=>!['questionTemplateId','providerId'].includes(k))||typeof body.questionTemplateId!=='string'||!DEMO_SCENARIOS.some(s=>s.questionTemplateId===body.questionTemplateId))throw new RequestError(400,'INVALID_QUESTION_TEMPLATE');
+      if(Object.keys(body).some(k=>!['questionTemplateId','providerId'].includes(k))||typeof body.questionTemplateId!=='string'||!DEMO_SCENARIOS.some(s=>!s.retired&&s.questionTemplateId===body.questionTemplateId))throw new RequestError(400,'INVALID_QUESTION_TEMPLATE');
       const setup=getPaymentSetup();if(!setup.quotesAvailable)throw new RequestError(503,'PROVIDER_PAYMENT_SETUP_REQUIRED');
       const template=body.questionTemplateId;
       if(body.providerId!==undefined&&(typeof body.providerId!=='string'||!providers.some(p=>p.providerId===body.providerId)))throw new RequestError(400,'INVALID_PROVIDER');
@@ -208,7 +209,7 @@ export async function startGateway(options: GatewayOptions = {}) {
       if (negotiationInFlight) throw new RequestError(429,'NEGOTIATION_BUSY');
       if (Object.keys(body).some(key => !['maxPriceMinor','questionTemplateId','mode'].includes(key)) || typeof body.maxPriceMinor !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(body.maxPriceMinor)) throw new RequestError(400, 'INVALID_PRICE');
       const questionTemplateId = body.questionTemplateId === undefined ? QUESTION_TEMPLATE : body.questionTemplateId;
-      if (typeof questionTemplateId !== 'string' || (questionTemplateId !== QUESTION_TEMPLATE && !DEMO_SCENARIOS.some(item => item.questionTemplateId === questionTemplateId))) throw new RequestError(400, 'INVALID_QUESTION_TEMPLATE');
+      if (typeof questionTemplateId !== 'string' || (questionTemplateId !== QUESTION_TEMPLATE && !DEMO_SCENARIOS.some(item => !item.retired&&item.questionTemplateId === questionTemplateId))) throw new RequestError(400, 'INVALID_QUESTION_TEMPLATE');
       const mode = body.mode ?? 'MOCK';
       if (mode !== 'MOCK' && mode !== 'LIVE') throw new RequestError(400,'INVALID_NEGOTIATION_MODE');
       let strategy: AiNegotiationStrategy | undefined;

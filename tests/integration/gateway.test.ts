@@ -54,12 +54,12 @@ test.each([['COMPUTE_HTTP_429',429,'COMPUTE_RATE_LIMITED'],['COMPUTE_HTTP_401',5
   expect(response.status).toBe(status); expect(await response.json()).toEqual({error:code});
 });
 
-test('templates expose read and simulated write use cases', async () => {
+test('catalog exposes scoped services and hides retired tasks and all paid values', async () => {
   const server = await start();
   const response = await fetch(`${server.baseUrl}/api/templates`);
   expect(response.status).toBe(200);
   const body = await response.json();
-  expect(body.templates.map((item: {id: string}) => item.id)).toEqual(['aave-usdc-liquidity','aave-usdc-utilization','dao-treasury-risk','link-token-decimals','write-link-report','ai-link-explanation']);
+  expect(body.templates).toHaveLength(25);expect(body.templates.some((item:{operation:string})=>item.operation==='WRITE')).toBe(false);expect(body.templates.every((item:Record<string,unknown>)=>!('value' in item)&&!('computationPrompt' in item))).toBe(true);expect(body.templates.filter((item:{dataAccess:{classification:string}})=>item.dataAccess.classification==='PRIVATE')).toHaveLength(10);
   expect(body.templates.every((item: {demoTrustMode: string}) => item.demoTrustMode === 'UNTRUSTED_MOCK')).toBe(true);
 });
 test('rejects unknown question template before contacting providers', async () => {
@@ -155,8 +155,8 @@ test('utility quotes arrive without charging and checkout stays blocked until ex
   const b=await startProvider({port:0,providerId:'provider-b',askMinor:'700',floorMinor:'400',payment:{payTo:'0.0.124',journal:bJournal}});
   cleanup.push(async()=>{await a.close();aJournal.close();},async()=>{await b.close();bJournal.close();});
   const server=await gateway.startGateway({port:0,providerOrigins:[a.baseUrl,b.baseUrl]});cleanup.push(server.close);
-  const response=await fetch(server.baseUrl+'/api/quotes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({questionTemplateId:'SIMULATED_LINK_REPORT_WRITE'})});
-  expect(response.status).toBe(200);const data=await response.json();expect(data.paymentReady).toBe(false);expect(data.results).toMatchObject([{providerId:'provider-a',operation:'WRITE',amountTinybars:'2000',payTo:'0.0.123'},{providerId:'provider-b',operation:'WRITE',amountTinybars:'2800',payTo:'0.0.124'}]);
+  const response=await fetch(server.baseUrl+'/api/quotes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({questionTemplateId:'PRIVATE_AAVE_POSITION_HEALTH_FACTOR'})});
+  expect(response.status).toBe(200);const data=await response.json();expect(data.paymentReady).toBe(false);expect(data.results).toMatchObject([{providerId:'provider-a',operation:'READ',amountTinybars:'2000',payTo:'0.0.123'},{providerId:'provider-b',operation:'READ',amountTinybars:'2800',payTo:'0.0.124'}]);
   const checkout=await fetch(server.baseUrl+'/api/payments/checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quoteId:data.results[0].quoteId,approvedAmountTinybars:'2000'})});expect(checkout.status).toBe(503);expect(await checkout.json()).toEqual({error:'PAYMENT_SETUP_REQUIRED'});
   const setup=await fetch(server.baseUrl+'/api/payments/setup').then(r=>r.json());expect(JSON.stringify(setup)).not.toContain('PRIVATE_KEY=');expect(setup.missing).toContain('HEDERA_MAX_PAYMENT_TINYBARS');
 });

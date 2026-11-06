@@ -3,7 +3,7 @@ import { AnswerEnvelopeSchema } from '@data-leases/contracts';
 import * as agents from '../src/index.js';
 const templates = ['AAVE_V3_USDC_AVAILABLE_LIQUIDITY', 'AAVE_V3_USDC_RESERVE_UTILIZATION', 'DAO_TREASURY_RISK_SNAPSHOT'];
 test('catalog marks every measurement synthetic and separates roadmap extension', () => {
- expect(agents.DEMO_SCENARIOS).toHaveLength(6);
+ expect(agents.DEMO_SCENARIOS).toHaveLength(26);
  expect(agents.DEMO_SCENARIOS.every(scenario => scenario.demoTrustMode === 'UNTRUSTED_MOCK')).toBe(true);
  expect(agents.DEMO_SCENARIOS[2]?.description).toContain('Illustrative extension');
 });

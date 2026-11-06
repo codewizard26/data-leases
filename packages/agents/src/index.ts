@@ -74,7 +74,7 @@ export function hashTerms(value: NegotiationMessage): string {
 }
 export interface ProviderOptions { port: number; providerId: string; askMinor: string; floorMinor: string; strategy?: NegotiationStrategy; payment?:{payTo:string;journal:PaymentJournal}; compute?:ComputeAdapter; utilityRates?:Record<string,{askMinor:string;floorMinor:string}>; answerSource?:(answer:AnswerEnvelope)=>Promise<Pick<AnswerEnvelope,'value'|'sourceBlockNumber'|'sourceBlockHash'|'evidenceRefs'>> }
 export function providerCard(baseUrl: string, providerId: string, computationAvailable=false,linkSourceAvailable=false): AgentCard {
- return AgentCard.fromJSON({ name: providerId, description: linkSourceAvailable?'Unsigned local A2A provider; Ethereum LINK reads, other synthetic demos, optional Hedera exact payments':'DEMO_UNTRUSTED: local A2A research provider; synthetic answers; optional Hedera exact payments', version: '0.1.0', supportedInterfaces: [{ url: `${baseUrl}/a2a`, protocolBinding: 'JSONRPC', protocolVersion: '1.0' }], capabilities: {}, defaultInputModes: [NEGOTIATION_MEDIA_TYPE], defaultOutputModes: [NEGOTIATION_MEDIA_TYPE, ANSWER_MEDIA_TYPE], skills: [{ id: QUESTION_TEMPLATE, name: 'Ethereum lending liquidity', description: 'Mock data negotiation; no live financial data', tags: ['DEMO_UNTRUSTED'] }, ...DEMO_SCENARIOS.filter(s=>s.operation!=='COMPUTE'||computationAvailable).map(scenario => ({ id: scenario.questionTemplateId, name: scenario.title, description: linkSourceAvailable&&scenario.questionTemplateId==='ERC20_TOKEN_METADATA'?'Read Ethereum LINK decimals at an explicit recent block; provider identity is unsigned.':scenario.description, tags: linkSourceAvailable&&scenario.questionTemplateId==='ERC20_TOKEN_METADATA'?['UNTRUSTED_UNSIGNED','ETHEREUM_RPC']:['DEMO_UNTRUSTED', 'SYNTHETIC'] }))] });
+ return AgentCard.fromJSON({ name: providerId, description: linkSourceAvailable?'Unsigned local A2A provider; Ethereum LINK reads, other synthetic demos, optional Hedera exact payments':'DEMO_UNTRUSTED: local A2A research provider; synthetic answers; optional Hedera exact payments', version: '0.1.0', supportedInterfaces: [{ url: `${baseUrl}/a2a`, protocolBinding: 'JSONRPC', protocolVersion: '1.0' }], capabilities: {}, defaultInputModes: [NEGOTIATION_MEDIA_TYPE], defaultOutputModes: [NEGOTIATION_MEDIA_TYPE, ANSWER_MEDIA_TYPE], skills: [{ id: QUESTION_TEMPLATE, name: 'Ethereum lending liquidity', description: 'Mock data negotiation; no live financial data', tags: ['DEMO_UNTRUSTED'] }, ...DEMO_SCENARIOS.filter(s=>!s.retired&&(s.operation!=='COMPUTE'||computationAvailable)).map(scenario => ({ id: scenario.questionTemplateId, name: scenario.title, description: linkSourceAvailable&&scenario.questionTemplateId==='ERC20_TOKEN_METADATA'?'Read Ethereum LINK decimals at an explicit recent block; provider identity is unsigned.':scenario.description, tags: linkSourceAvailable&&scenario.questionTemplateId==='ERC20_TOKEN_METADATA'?['UNTRUSTED_UNSIGNED','ETHEREUM_RPC']:['DEMO_UNTRUSTED', 'SYNTHETIC'] }))] });
 }
 export async function startProvider(options: ProviderOptions) {
  const ask = BigInt(MinorUnitsSchema.parse(options.askMinor));
@@ -89,7 +89,7 @@ export async function startProvider(options: ProviderOptions) {
  const executor: AgentExecutor = {
   async execute(context, bus) {
    const input = payload(context.userMessage);
-   const operation=scenarioForTemplate(input.questionTemplateId)?.operation;const multiplier=operation==='WRITE'?4n:operation==='COMPUTE'?2n:1n;
+   const task=scenarioForTemplate(input.questionTemplateId);const operation=task?.operation;const multiplier=BigInt(task?.dataAccess.priceMultiplier??1);
    const rate=options.utilityRates?.[input.questionTemplateId];
    const quotedAsk=MinorUnitsSchema.parse(rate?.askMinor??((ask*multiplier).toString()));
    const quotedFloor=MinorUnitsSchema.parse(rate?.floorMinor??((floor*multiplier).toString()));
@@ -105,7 +105,7 @@ export async function startProvider(options: ProviderOptions) {
    let reasonCode = 'INVALID_TERMS';
    let priceMinor = quotedAsk;
    let aiDecision: StrategyDecision | undefined;
-   const valid = Boolean(input.runId) && input.toAgentId === options.providerId && Boolean(scenarioForTemplate(input.questionTemplateId)) && (operation!=='COMPUTE'||Boolean(options.compute)) && (input.currency === 'demo:USD6' || (Boolean(options.payment) && input.currency === HEDERA_CURRENCY)) && input.evidencePolicyId === scenarioForTemplate(input.questionTemplateId)?.evidencePolicyId;
+   const valid = Boolean(input.runId) && input.toAgentId === options.providerId && Boolean(task)&&!task?.retired && !(task?.dataAccess.classification==='PRIVATE'&&input.action==='ACCEPT'&&input.currency!==HEDERA_CURRENCY) && (operation!=='COMPUTE'||Boolean(options.compute)) && (input.currency === 'demo:USD6' || (Boolean(options.payment) && input.currency === HEDERA_CURRENCY)) && input.evidencePolicyId === scenarioForTemplate(input.questionTemplateId)?.evidencePolicyId;
    const bindingValid = !previous || (previous.fromAgentId === input.toAgentId && previous.toAgentId === input.fromAgentId && previous.sessionId === input.sessionId && previous.runId === input.runId && previous.questionTemplateId === input.questionTemplateId && previous.currency === input.currency && previous.maxAgeSeconds === input.maxAgeSeconds && previous.deliverySlaSeconds === input.deliverySlaSeconds && previous.expiresAt === input.expiresAt);
    if (!modeValid) { action = 'REJECT'; reasonCode = 'INVALID_NEGOTIATION_MODE'; }
    else if (!modeMatches) { action = 'REJECT'; reasonCode = 'NEGOTIATION_MODE_MISMATCH'; }
@@ -172,6 +172,7 @@ export async function negotiate(options: BuyerOptions) {
  const questionTemplateId = options.questionTemplateId ?? QUESTION_TEMPLATE;
  const scenario = scenarioForTemplate(questionTemplateId);
  if (!scenario) throw new Error('UNSUPPORTED_QUESTION_TEMPLATE');
+ if(scenario.retired)throw new Error('TASK_RETIRED');
  const currency=options.currency??'demo:USD6';if(!['demo:USD6',HEDERA_CURRENCY].includes(currency))throw new Error('UNSUPPORTED_CURRENCY');
  const maxRounds=options.maxRounds??3;if(!Number.isInteger(maxRounds)||maxRounds<2||maxRounds>3)throw new Error('INVALID_MAX_ROUNDS');
  const cap = BigInt(MinorUnitsSchema.parse(options.maxPriceMinor));
