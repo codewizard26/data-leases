@@ -11,14 +11,18 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
-    "test:integration": "vitest run tests/integration --passWithNoTests"
+    "test:integration": "vitest run tests/integration --passWithNoTests",
+    "cre:prepare": "pnpm --filter @data-leases/cre-adapter cre:prepare",
+    "cre:simulate": "pnpm --filter @data-leases/cre-adapter cre:simulate"
   },
   "devDependencies": {
-    "typescript": "5.9.3",
-    "zod": "3.25.76",
-    "vitest": "3.2.4",
+    "@data-leases/contracts": "workspace:*",
+    "@data-leases/cre-adapter": "workspace:*",
+    "@eslint/js": "9.39.1",
     "eslint": "9.39.1",
+    "typescript": "5.9.3",
     "typescript-eslint": "8.48.1",
-    "@eslint/js": "9.39.1"
+    "vitest": "3.2.4",
+    "zod": "3.25.76"
   }
 }

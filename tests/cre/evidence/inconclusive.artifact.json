@@ -1,0 +1,117 @@
+{
+  "request": {
+    "schemaVersion": "1.0.0",
+    "verificationId": "6f32bbb8-6726-4561-9d2c-53a6d029098a",
+    "runId": "ede984e4-e725-4e2e-842e-b394178a6252",
+    "sessionId": "3e171ca5-1e6f-432a-9561-c4b4f454a492",
+    "questionTemplateId": "ERC20_TOKEN_METADATA",
+    "providerId": "cre-demo-provider",
+    "answer": {
+      "schemaVersion": "1.0.0",
+      "sessionId": "3e171ca5-1e6f-432a-9561-c4b4f454a492",
+      "negotiationId": "bc4c3193-42c8-4a50-b2be-91fe6b2296f3",
+      "runId": "ede984e4-e725-4e2e-842e-b394178a6252",
+      "questionTemplateId": "ERC20_TOKEN_METADATA",
+      "providerId": "cre-demo-provider",
+      "acceptedQuoteId": "unpaid-cre-proof",
+      "deliveredAt": "2026-11-06T18:46:18.226Z",
+      "chainId": "eip155:1",
+      "metric": "ERC20_DECIMALS",
+      "value": "18",
+      "unit": "decimal-places",
+      "sourceContract": "0x514910771af9ca656af840dff83e8264ecf986ca",
+      "sourceBlockNumber": "26357614",
+      "sourceBlockHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "methodologyVersion": "link-decimals-v1",
+      "evidenceRefs": [],
+      "evidencePolicyId": "link-decimals-v1",
+      "demoTrustMode": "UNTRUSTED_MOCK"
+    },
+    "policy": {
+      "policyId": "link-decimals-v1",
+      "version": "1.0.0",
+      "allowedChainIds": [
+        "eip155:1"
+      ],
+      "allowedMetricIds": [
+        "ERC20_DECIMALS"
+      ],
+      "maxAgeSeconds": 3600,
+      "maxAbsDeltaRaw": "0"
+    },
+    "requestedAt": "2026-11-06T18:46:18.226Z"
+  },
+  "requestSha256": "f24e0292e48182f3ebbe6e1d0d354b4775e82d010f3a8dccbb00527ac6b81d60",
+  "result": {
+    "schemaVersion": "1.0.0",
+    "verificationId": "6f32bbb8-6726-4561-9d2c-53a6d029098a",
+    "runId": "ede984e4-e725-4e2e-842e-b394178a6252",
+    "providerId": "cre-demo-provider",
+    "executionMode": "CRE_CLI_SIMULATION",
+    "status": "INCONCLUSIVE",
+    "checks": [
+      {
+        "checkId": "ANSWER_SCHEMA_VALID",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "POLICY_SUPPORTED",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "SOURCE_CHAIN_SUPPORTED",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "SOURCE_CONTRACT_ALLOWED",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "METRIC_UNITS_MATCH",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "ANSWER_FRESHNESS_VALID",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "SOURCE_BLOCK_REFERENCE_VALID",
+        "status": "UNKNOWN",
+        "reasonCode": "BLOCK_HASH_MISMATCH"
+      },
+      {
+        "checkId": "SOURCE_FRESHNESS_VALID",
+        "status": "PASS",
+        "reasonCode": "VALIDATION_PASSED"
+      },
+      {
+        "checkId": "ONCHAIN_REFERENCE_MATCH",
+        "status": "UNKNOWN",
+        "expected": "18",
+        "reasonCode": "VALUE_MISMATCH"
+      },
+      {
+        "checkId": "EXTERNAL_HTTP_REFERENCE_MATCH",
+        "status": "UNKNOWN",
+        "observed": "18",
+        "expected": "18",
+        "reasonCode": "VALUE_MISMATCH"
+      }
+    ],
+    "referenceChainId": "eip155:1",
+    "referenceBlockNumber": "26357614",
+    "referenceBlockHash": "0xbdfa29a990cca9cad1d00ce7670d40d2ddb59e2fda6eb92ed3cd9bb4697457c5",
+    "executedAt": "2026-11-06T18:49:30.351Z",
+    "evidenceRefs": [
+      "eip155:1/block/26357614/contract/0x514910771af9ca656af840dff83e8264ecf986ca",
+      "https://raw.githubusercontent.com/Uniswap/default-token-list/main/src/tokens/mainnet.json"
+    ]
+  },
+  "transcriptSha256": "cc053903042fdb2d42fe6955f6dfb4bcc1fe2d892844ddd5e2281c973e476a68"
+}
