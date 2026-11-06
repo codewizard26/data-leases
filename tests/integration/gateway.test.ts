@@ -12,6 +12,10 @@ test('health exposes mode without credentials and serves browser page', async ()
   expect(await response.json()).toMatchObject({status:'ok',compute:{provider:'mock'}});
   const page = await fetch(server.baseUrl);
   expect(page.status).toBe(200); expect(page.headers.get('content-type')).toContain('text/html');
+  const landing = await page.text();
+  expect(landing).toContain('id="plan"');
+  expect(landing).toContain('href="/demo"');
+  expect(landing).not.toContain('id="negotiation-form"');
 });
 test('compute uses deterministic mock by default', async () => {
   const server = await start();
@@ -69,4 +73,11 @@ test('selected mock scenario returns correlated answer and transport details', a
   expect(response.status).toBe(200);
   expect(body.results[0]).toMatchObject({protocol:'A2A 1.0 JSONRPC',cardUrl:`${a.baseUrl}/.well-known/agent-card.json`,a2aEndpoint:`${a.baseUrl}/a2a`, stages:{discovery:'DISCOVERED',negotiation:'AGREED',answer:'DELIVERED_UNVERIFIED',verification:'NOT_REQUESTED',payment:'DISABLED'},answer:{questionTemplateId:'AAVE_V3_USDC_AVAILABLE_LIQUIDITY',demoTrustMode:'UNTRUSTED_MOCK'}});
   expect(body.results[0].answer.runId).toBe(body.results[0].runId);
+});
+
+test('demo workspace is available separately from the landing page', async () => {
+  const server = await start();
+  const response = await fetch(`${server.baseUrl}/demo`);
+  expect(response.status).toBe(200);
+  expect(await response.text()).toContain('template-gallery');
 });

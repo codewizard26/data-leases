@@ -49,7 +49,7 @@ Configure OpenRouter in ignored `.env` as described in [compute setup](docs/COMP
 pnpm dev
 ```
 
-Open `http://127.0.0.1:3000`. The local console provides negotiation transcripts and a separate AI prompt panel. Provider processes run on 4101 and 4102. This is a lightweight development console, not the planned Next.js dashboard. SSE, persistence, live data, and verification remain pending.
+Open `http://127.0.0.1:3000` for the product landing page and brief plan. Select **Try the agent demo** or visit `http://127.0.0.1:3000/demo`. The local console provides negotiation transcripts and a separate AI prompt panel. Provider processes run on 4101 and 4102. This is a lightweight development console, not the planned Next.js dashboard. SSE, persistence, live data, and verification remain pending.
 
 ## Mock use cases and communication walkthrough
 
@@ -62,3 +62,7 @@ The console follows the navy/amber visual direction in `specs.md` and exposes th
 Select a template, set a price ceiling, and choose **Discover & negotiate**. At 350 minor units Provider A counters and agrees; Provider B rejects. At 250 neither delivers an answer. At 700 both agree. Inspect either provider's recorded exchange and raw data parts. Accepted terms return a second structured A2A data part containing a correlated `AnswerEnvelope`; the browser displays it as **MOCK / delivered unverified**. No contract address, chain block, signature, payment receipt or CRE proof is fabricated.
 
 The browser shows completed HTTP exchanges, not a live SSE stream. AI explanations are optional and separate from price decisions. **Use current run as context** prepares a summary prompt; sending it requires a separate click.
+
+## CRE branch review
+
+The teammate CRE branch was reviewed without merging. See [integration review](docs/CRE_REVIEW.md) for verified checks, contract reconciliation, supported metric limits, and remaining fixes.

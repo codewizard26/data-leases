@@ -55,8 +55,8 @@ export async function startGateway(options: GatewayOptions = {}) {
     if (request.method === 'GET' && path === '/api/templates') {
       json(response, 200, {templates: DEMO_SCENARIOS}); return;
     }
-    if (request.method === 'GET' && path === '/') {
-      const html = await readFile(new URL('../../web/index.html', import.meta.url));
+    if (request.method === 'GET' && ['/', '/demo', '/demo/'].includes(path)) {
+      const html = await readFile(new URL(path === '/' ? '../../web/landing.html' : '../../web/index.html', import.meta.url));
       response.writeHead(200, {'Content-Type':'text/html; charset=utf-8', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'Content-Security-Policy':"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"});
       response.end(html); return;
     }
