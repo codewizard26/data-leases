@@ -25,7 +25,7 @@ Keep API keys and wallet secrets in the ignored `.env`; never commit them. `pnpm
 - Ten separate provider services: ports 4101–4110
 - Older diagnostic console: http://localhost:3001/developer
 
-Check **Connections** before attempting a purchase. Payments require a funded buyer account, configured merchant recipients and an active spending mandate. CRE CLI simulation requires its local runtime and authentication. Arkiv discovery/publication requires configured access and publisher settings. See [payment setup](docs/PAYMENTS.md), [provider setup](docs/PROVIDER_DIVERSITY.md), [compute setup](docs/COMPUTE.md) and [CRE setup](docs/CRE_HANDOFF.md).
+Check **Connections** before attempting a purchase. Payments require a funded buyer account, configured merchant recipients and an active spending mandate. CRE CLI simulation requires its local runtime and authentication. Arkiv discovery/publication requires configured access and publisher settings. To host the backend for the Vercel console without a server, see [GitHub Codespaces](docs/CODESPACES.md). See [payment setup](docs/PAYMENTS.md), [provider setup](docs/PROVIDER_DIVERSITY.md), [compute setup](docs/COMPUTE.md) and [CRE setup](docs/CRE_HANDOFF.md).
 
 ## Complete buyer workflow
 
