@@ -2,7 +2,7 @@
 
 **Rent the answer. Not the team.**
 
-Ask a specific data question, compare providers, choose one agent, and set a spending limit. Each time you request an answer, your buyer agent negotiates and pays the selected provider through x402 on Hedera testnet. You can inspect the answer, payment and source checks together.
+Select one or more public measurements, compare providers, choose one agent, and set a spending limit. Each time you request the selected bundle, your buyer agent confirms a fixed itemized quote and pays the selected provider through x402 on Hedera testnet. You can inspect the answer, payment and source checks together.
 
 Example: you want to know how much USDC liquidity is available on Aave. Instead of building a pipeline or buying an entire data subscription, choose a provider and request that measurement when you need it.
 
@@ -29,15 +29,15 @@ Check **Connections** before attempting a purchase. Payments require a funded bu
 
 ## Complete buyer workflow
 
-### 1. Choose the question
+### 1. Select measurements
 
-Select a service in the dashboard, such as **Aave USDC available liquidity** or **Aave USDC supply APY**. Review what it returns, its units and its source requirements.
+Select a service in the dashboard, then check only the measurements you need, such as **Aave USDC available liquidity** or **Aave USDC supply APY**. Review what it returns, its units and its source requirements.
 
 **Use case:** a protocol analyst needs a current reserve measurement rather than a general chatbot response. Start with a supported public read; private or subjective services without a real source cannot produce independently accepted evidence.
 
 ### 2. Compare agents
 
-Open **Compare agents** to inspect rates, negotiation styles and provider details. Six local provider profiles offer different task-specific tariffs:
+Open **Compare agents** to inspect fixed bundle totals and provider details. Six local provider profiles offer different task-specific tariffs:
 
 | Provider | Port | Pricing style | USDC liquidity starting ask | USDC supply APY starting ask |
 | --- | --- | --- | ---: | ---: |
@@ -48,7 +48,9 @@ Open **Compare agents** to inspect rates, negotiation styles and provider detail
 | Beacon | 4105 | Firm | 1,100 | 1,000 |
 | Meridian | 4106 | Balanced | 800 | 650 |
 
-Amounts are **tinybars**, the smallest HBAR unit. One HBAR equals 100,000,000 tinybars. These are illustrative configured tariffs, not model API costs or guarantees of quality. Negotiation determines the final accepted price.
+Checkboxes select the measurements in your bundle. The total is the sum of the selected item prices. One request makes one x402 payment to one provider; each measurement retains its own verification result. Changing the selection requires selecting a provider and a matching mandate again.
+
+Amounts are **tinybars**, the smallest HBAR unit. One HBAR equals 100,000,000 tinybars. These are illustrative configured tariffs, not model API costs or guarantees of quality. The fixed quote confirms the selected items, their prices, total, recipient and expiry. No bargaining or inference is required. The style column describes legacy agent profiles, not a price negotiation in this flow.
 
 Arkiv supplies published offers. Local drafts remain clearly labeled and cannot be selected for a paid mandate. An operator can explicitly publish eligible configured offers for the selected service from **Connections**. A provider needs a configured merchant recipient before it can sell; an unconfigured provider stays quote-only.
 
@@ -58,11 +60,10 @@ Arkiv supplies published offers. Local drafts remain clearly labeled and cannot 
 
 Choose an eligible published provider, then open **Mandate**. Set:
 
-- **Per-request cap:** the most one answer may cost.
+- **Per-request cap:** the most one selected bundle may cost.
 - **Total budget:** the most all requests under this mandate may consume.
 - **Expiry:** when authorization ends.
 - **Freshness:** how recent the source must be.
-- **Negotiation rounds:** how long the buyer and seller may bargain.
 
 Save the mandate. If World approval is enabled, complete the required authorization. The mandate pins the selected provider; another agent cannot silently replace it.
 
@@ -72,9 +73,9 @@ Save the mandate. If World approval is enabled, complete the required authorizat
 
 ### 4. Request an answer
 
-Click **Request answer · pay with x402**. This starts one explicit run. Your buyer agent contacts the selected provider through A2A, requests a quote and negotiates within the mandate. Watch the exchanges in the dashboard.
+Click **Request selected answers · pay with x402**. This starts one explicit run. The buyer confirms a fixed quote through the provider’s HTTP pricing API, reserves the complete bundle amount and requests preparation. No model negotiates a discount. Then one x402 payment unlocks the selected answers.
 
-If no acceptable price is reached, the purchase does not proceed. Model suggestions cannot raise your budget, bypass the provider allowlist or authorize unrestricted spending.
+If the fixed total exceeds your limits, a selected item is unavailable, or published rates no longer match, the purchase does not proceed. Model suggestions cannot raise your budget, bypass the provider allowlist or authorize unrestricted spending.
 
 **Use case:** an analyst requests a fresh snapshot before a report. A second snapshot requires another explicit request. New mandates have no automatic schedule; previously authorized recurring leases retain their existing scheduling policy.
 
@@ -90,7 +91,7 @@ A previously recorded payment of **500 tinybars** was independently confirmed as
 
 ### 6. Check the answer with CRE
 
-The answer includes its measurement and relevant source information. For supported public reads, the gateway submits it to the local **Chainlink CRE CLI simulation**. The workflow checks policy requirements and compares independent EVM and HTTP reference observations.
+Each answer in the bundle includes its measurement and relevant source information. For supported public reads, the gateway submits it to the local **Chainlink CRE CLI simulation**. The workflow checks policy requirements and compares independent EVM and HTTP reference observations.
 
 - **Accepted:** every required check passed.
 - **Rejected:** a required check failed.
@@ -104,7 +105,7 @@ Accepted Aave results include the source-contract check required for Arkiv recei
 
 ### 7. Inspect Arkiv records and service history
 
-Eligible accepted results can publish public-safe evidence receipts to Arkiv. Open **Service history** to inspect published offers, verification metadata and payment references with explorer links. Private paid answers are not automatically republished as public values.
+Each eligible accepted measurement can publish its own public-safe evidence receipt to Arkiv. All receipts share one run and one payment reference for the full bundle total; they are not separate charges. Open **Service history** to inspect published offers, verification metadata and payment references with explorer links. Private paid answers are not automatically republished as public values.
 
 Arkiv publication has its own status. If it fails, the application retains the answer, payment and verification outcome; a publication retry must not create another purchase.
 
@@ -121,9 +122,9 @@ Reuse the saved mandate for another explicit request. Each request uses the sele
 | Component | Simple job | Example use case |
 | --- | --- | --- |
 | Dashboard | Choose services, compare agents, set limits and inspect results | An analyst requests an Aave snapshot |
-| Buyer agent and gateway | Coordinate discovery, negotiation, authorization and delivery | Buy from the selected provider within a saved mandate |
-| Provider agents | Quote prices and deliver a supported answer | Offer the same public measurement at different rates |
-| A2A | Carry structured messages between separate agents | Exchange quotes, counters and accepted terms over HTTP |
+| Buyer agent and gateway | Coordinate fixed quotes, authorization and delivery | Buy from the selected provider within a saved mandate |
+| Provider agents | Quote prices and deliver a supported answer | Offer selected public measurements at different fixed rates |
+| A2A | Retain structured agent communication for legacy negotiation tools | Inspect older quote exchanges; the new bundle flow uses fixed HTTP pricing endpoints |
 | Claude / OpenRouter / optional 0G | Supply configured model inference for agent decisions or supported computation | Suggest a price action, subject to deterministic guards |
 | Hedera + x402 | Settle each authorized answer purchase | Transfer the agreed HBAR amount to the merchant |
 | Chainlink CRE CLI | Check supported answers against reference evidence | Reject a mismatching value or mark missing evidence inconclusive |
@@ -137,10 +138,10 @@ For direct Claude inference, set `ANTHROPIC_API_KEY` in the ignored `.env`. Prov
 
 ## How to test
 
-Start with **Aave USDC available liquidity**, choose a published provider and authorize a small testnet mandate. For Scout's default ask, 500 tinybars per request and 1,000 total permit at most two full-price purchases; negotiated prices may be lower.
+Start with **Aave USDC available liquidity**, choose a published provider and authorize a small testnet mandate. For Scout's default ask, 500 tinybars per request and 1,000 total permit at most two single-item purchases. Adding measurements increases the bundle total.
 
 1. Save the mandate and confirm no run or payment starts.
-2. Request one answer. Inspect negotiation, payment, answer and verification separately.
+2. Request one answer. Inspect the itemized quote, payment, answers and each verification separately.
 3. Check any eligible Arkiv receipt and **Service history** entry.
 4. Request again with the same mandate; verify the same provider and reduced remaining budget.
 5. Cancel the mandate and confirm a further request cannot spend.
@@ -166,6 +167,8 @@ pnpm cre:simulate:services AAVE_V3_USDC_AVAILABLE_LIQUIDITY
 This needs a configured CLI/runtime and reachable sources. Automated fixtures do not prove live settlement, real model inference or onchain publication. Generated local artifacts belong under ignored `data/tmp`, not Git.
 
 For a standalone negotiation-only demonstration, use `pnpm demo:a2a`. This uses separate local buyer/provider processes and demo pricing; it is not evidence of an HBAR payment.
+
+The current checkbox bundle flow supports public read measurements. Existing computation, negotiation and scheduled-lease APIs remain available for older integrations; they are not silently converted into new bundles.
 
 ## Current limits and further reading
 

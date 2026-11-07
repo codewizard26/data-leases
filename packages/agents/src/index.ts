@@ -1,3 +1,4 @@
+import {installFixedBundles} from './fixed-bundle.js';
 import {HederaPaywall, paymentDigest,HEDERA_CURRENCY,type PaymentJournal,type PaymentQuote} from './payments.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
@@ -85,6 +86,7 @@ export async function startProvider(options: ProviderOptions) {
  for(const id of Object.keys(options.utilityRates??{}))rateFor(id);
  const app = express();
  app.use(express.json({ limit: '32kb' }));
+ installFixedBundles(app,options,rateFor,options.payment?.journal);
  const sessions = new Map<string, NegotiationMessage>();
  const sessionModes = new Map<string, NegotiationMode>();
  let baseUrl = '';
@@ -277,3 +279,5 @@ export {PROVIDER_PROFILES,providerPrefix,providerRecipient,providerComputeEnviro
 export type {SellerStyle} from './provider-profiles.js';
 export {PublicProviderProfileSchema} from './provider-profiles.js';
 export type {PublicProviderProfile} from './provider-profiles.js';
+
+export {bundleTermsHash,bundlePaymentQuote} from './fixed-bundle.js';

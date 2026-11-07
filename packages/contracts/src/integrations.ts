@@ -5,7 +5,7 @@ export interface RunPublicationInput {
   runId: string;
   providerId: string;
   quoteId: string;
-  payment: {network: 'hedera:testnet'; transactionId: string; amountTinybars: string; hashScanUrl: string};
+  payment: {network: 'hedera:testnet'; transactionId: string; amountTinybars: string; hashScanUrl: string; settledAt?: string};
   verification: VerificationResult;
 }
 export interface RunReceiptReference {runId: string; reference: string; url?: string}

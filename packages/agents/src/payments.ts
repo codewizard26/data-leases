@@ -7,25 +7,25 @@ import type {PaymentRequired,PaymentRequirements,PaymentPayload,SettleResponse} 
 import {encodePaymentRequiredHeader,decodePaymentRequiredHeader,decodePaymentSignatureHeader,encodePaymentSignatureHeader,encodePaymentResponseHeader,decodePaymentResponseHeader,readLimitedText} from '@x402/core/http';
 import {ExactHederaScheme} from '@x402/hedera/exact/client';
 import {createClientHederaSigner,PrivateKey,inspectHederaTransaction} from '@x402/hedera';
-import {MinorUnitsSchema,AnswerEnvelopeSchema,ComputationResultSchema,type ComputationResult,type AnswerEnvelope} from '@data-leases/contracts';
+import {MinorUnitsSchema,AnswerEnvelopeSchema,ComputationResultSchema,type ComputationResult,type AnswerEnvelope,type FixedBundleQuote} from '@data-leases/contracts';
 export const HEDERA_CURRENCY='hedera:testnet/HBAR';
 export const HEDERA_NETWORK='hedera:testnet' as const;
 export const HEDERA_ASSET='0.0.0';
 export const HEDERA_FACILITATOR='https://x402.org/facilitator';
-export interface PaymentQuote {runId:string;quoteId:string;termsHash:string;priceMinor:string;currency:string;expiresAt:string}
+export interface PaymentQuote {runId:string;quoteId:string;termsHash:string;priceMinor:string;currency:string;expiresAt:string;bundle?:FixedBundleQuote}
 const account=(value:string)=>{if(!/^0\.0\.[1-9][0-9]*$/.test(value))throw new Error('INVALID_HEDERA_ACCOUNT');return value;};
 const exact=(a:unknown,b:unknown)=>canonical(a)===canonical(b);
 function canonical(value:unknown):string {if(Array.isArray(value))return '['+value.map(canonical).join(',')+']';if(value&&typeof value==='object')return '{'+Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,v])=>JSON.stringify(key)+':'+canonical(v)).join(',')+'}';return JSON.stringify(value);}
 function quoteValid(quote:PaymentQuote){if(quote.currency!==HEDERA_CURRENCY)throw new Error('PAYMENT_CURRENCY_MISMATCH');if(BigInt(MinorUnitsSchema.parse(quote.priceMinor))<=0n||BigInt(quote.priceMinor)>9223372036854775807n)throw new Error('INVALID_PAYMENT_AMOUNT');if(!quote.runId||!quote.quoteId||!quote.termsHash||!Number.isFinite(Date.parse(quote.expiresAt))||Date.parse(quote.expiresAt)<=Date.now())throw new Error('PAYMENT_QUOTE_EXPIRED');}
 export function createHederaChallenge(quote:PaymentQuote,resourceUrl:string,payTo:string,feePayer:string):PaymentRequired {
  quoteValid(quote);account(payTo);account(feePayer);
- return {x402Version:2,resource:{url:resourceUrl,description:'Negotiated Data Leases answer; payment does not verify answer quality',mimeType:'application/json'},accepts:[{scheme:'exact',network:HEDERA_NETWORK,asset:HEDERA_ASSET,amount:quote.priceMinor,payTo,maxTimeoutSeconds:Math.max(1,Math.min(180,Math.floor((Date.parse(quote.expiresAt)-Date.now())/1000))),extra:{feePayer,assetTransferMethod:'cryptoTransfer',runId:quote.runId,quoteId:quote.quoteId,termsHash:quote.termsHash}}]};
+ return {x402Version:2,resource:{url:resourceUrl,description:'Data Leases answer bundle; payment does not verify answer quality',mimeType:'application/json'},accepts:[{scheme:'exact',network:HEDERA_NETWORK,asset:HEDERA_ASSET,amount:quote.priceMinor,payTo,maxTimeoutSeconds:Math.max(1,Math.min(180,Math.floor((Date.parse(quote.expiresAt)-Date.now())/1000))),extra:{feePayer,assetTransferMethod:'cryptoTransfer',runId:quote.runId,quoteId:quote.quoteId,termsHash:quote.termsHash}}]};
 }
 export function validateHederaChallenge(challenge:PaymentRequired,quote:PaymentQuote,policy:{resourceUrl:string;payTo:string;feePayer:string;maxAmount:string}):PaymentRequirements {
  quoteValid(quote);if(BigInt(quote.priceMinor)>BigInt(MinorUnitsSchema.parse(policy.maxAmount)))throw new Error('PAYMENT_BUDGET_EXCEEDED');
  const r=challenge.accepts?.[0];if(challenge.x402Version!==2||challenge.resource?.url!==policy.resourceUrl||challenge.accepts?.length!==1||!r||r.scheme!=='exact'||r.network!==HEDERA_NETWORK||r.asset!==HEDERA_ASSET||r.amount!==quote.priceMinor||r.payTo!==account(policy.payTo)||r.extra?.feePayer!==account(policy.feePayer)||r.extra?.assetTransferMethod!=='cryptoTransfer'||r.extra?.runId!==quote.runId||r.extra?.quoteId!==quote.quoteId||r.extra?.termsHash!==quote.termsHash||!Number.isInteger(r.maxTimeoutSeconds)||r.maxTimeoutSeconds<1||r.maxTimeoutSeconds>180)throw new Error('PAYMENT_TERMS_MISMATCH');return r;
 }
-export interface PaymentRecord {quote:PaymentQuote;status:string;answer?:AnswerEnvelope;computation?:ComputationResult;requirements?:PaymentRequired;receipt?:SettleResponse;transactionId?:string;payTo?:string;payer?:string;authorization?:{policy:string;signature:string;publicKey:string}}
+export interface PaymentRecord {quote:PaymentQuote;status:string;answer?:AnswerEnvelope;answers?:AnswerEnvelope[];computation?:ComputationResult;requirements?:PaymentRequired;receipt?:SettleResponse;transactionId?:string;payTo?:string;payer?:string;authorization?:{policy:string;signature:string;publicKey:string}}
 /** Durable no-retry journal. Unknown settlement must be reconciled, never re-paid automatically. */
 export class PaymentJournal {
  private db:DatabaseSync;
@@ -43,7 +43,7 @@ export class HederaPaywall {
  async respond(runId:string,signature?:string):Promise<{status:number;headers:Record<string,string>;body:unknown}>{
   const id='seller:'+runId;const initial=this.config.journal.get(id);if(!initial)return {status:404,headers:{},body:{error:'PAYMENT_RUN_NOT_FOUND'}};
   let record:PaymentRecord=initial;
-  const delivered=()=>({status:200,headers:{'PAYMENT-RESPONSE':encodePaymentResponseHeader(record.receipt!)},body:{answer:record.answer,computation:record.computation,payment:record.receipt}});
+  const delivered=()=>({status:200,headers:{'PAYMENT-RESPONSE':encodePaymentResponseHeader(record.receipt!)},body:{answer:record.answer,computation:record.computation,answers:record.answers,payment:record.receipt}});
   if(record.status==='SETTLED')return delivered();
   if(record.status!=='READY')return {status:409,headers:{},body:{error:'PAYMENT_RECONCILIATION_REQUIRED',paymentStatus:record.status}};
   quoteValid(record.quote);
@@ -62,10 +62,10 @@ export class HederaPaywall {
  }
 }
 export interface HederaBuyerConfig {accountId:string;privateKey:string;keyType:'ED25519'|'ECDSA';maxTinybars:string;journal:PaymentJournal;authorize?:()=>void}
-export async function payHederaAnswer(input:{url:string;quote:PaymentQuote;payTo:string;config:HederaBuyerConfig}):Promise<{answer:AnswerEnvelope;payment:SettleResponse;computation?:ComputationResult}> {
+export async function payHederaAnswer(input:{url:string;quote:PaymentQuote;payTo:string;config:HederaBuyerConfig}):Promise<{answer:AnswerEnvelope;payment:SettleResponse;computation?:ComputationResult;answers?:AnswerEnvelope[]}> {
  const {config,quote}=input;config.authorize?.();quoteValid(quote);account(config.accountId);account(input.payTo);if(config.accountId===input.payTo)throw new Error('BUYER_AND_PROVIDER_MUST_DIFFER');
  const url=new URL(input.url);if(url.protocol!=='http:'||url.hostname!=='127.0.0.1'||url.pathname!=='/paid-answers/'+encodeURIComponent(quote.runId)||url.username||url.password||url.search||url.hash)throw new Error('PAYMENT_RESOURCE_NOT_ALLOWED');
- const id='buyer:'+quote.runId;const prior=config.journal.get(id);if(prior){if(!exact(prior.quote,quote))throw new Error('PAYMENT_ID_CONFLICT');if(prior.status==='SETTLED'&&prior.answer&&prior.receipt)return {answer:prior.answer,payment:prior.receipt,computation:prior.computation};throw new Error('PAYMENT_RECONCILIATION_REQUIRED');}
+ const id='buyer:'+quote.runId;const prior=config.journal.get(id);if(prior){if(!exact(prior.quote,quote))throw new Error('PAYMENT_ID_CONFLICT');if(prior.status==='SETTLED'&&prior.answer&&prior.receipt)return {answer:prior.answer,payment:prior.receipt,computation:prior.computation,answers:prior.answers};throw new Error('PAYMENT_RECONCILIATION_REQUIRED');}
  const response=await fetch(input.url,{redirect:'error',signal:AbortSignal.timeout(30000)});if(response.status!==402)throw new Error('EXPECTED_X402_PAYMENT_CHALLENGE');const header=response.headers.get('PAYMENT-REQUIRED');if(!header||header.length>65536)throw new Error('INVALID_X402_CHALLENGE');
  const challenge=decodePaymentRequiredHeader(header);const supported=await new HTTPFacilitatorClient({url:HEDERA_FACILITATOR,timeoutMs:30000}).getSupported();const kind=supported.kinds.find(k=>k.x402Version===2&&k.scheme==='exact'&&k.network===HEDERA_NETWORK);const feePayer=kind?.extra?.feePayer;if(typeof feePayer!=='string')throw new Error('HEDERA_FACILITATOR_UNSUPPORTED');
  const required=validateHederaChallenge(challenge,quote,{resourceUrl:input.url,payTo:input.payTo,feePayer,maxAmount:config.maxTinybars});
@@ -85,7 +85,7 @@ export async function payHederaAnswer(input:{url:string;quote:PaymentQuote;payTo
   const paid=await fetch(input.url,{headers:{'PAYMENT-SIGNATURE':encodePaymentSignatureHeader(payload)},redirect:'error',signal:AbortSignal.timeout(45000)});const receiptHeader=paid.headers.get('PAYMENT-RESPONSE');if(!receiptHeader)throw new Error('PAYMENT_OUTCOME_UNKNOWN');
   const receipt=decodePaymentResponseHeader(receiptHeader);if(!receipt.success||receipt.network!==HEDERA_NETWORK||receipt.payer!==config.accountId||!receipt.transaction||(receipt.amount!==undefined&&receipt.amount!==quote.priceMinor))throw new Error('PAYMENT_RECEIPT_INVALID');
   record.receipt=receipt;record.status='SETTLED_DELIVERY_FAILED';config.journal.save(id,record);if(!paid.ok)throw new Error('PAID_DELIVERY_FAILED');
-  const body=JSON.parse(await readLimitedText(paid,65536));const answer=AnswerEnvelopeSchema.parse(body.answer);if(answer.runId!==quote.runId||answer.acceptedQuoteId!==quote.quoteId)throw new Error('PAID_ANSWER_BINDING_MISMATCH');record.computation=body.computation?ComputationResultSchema.parse(body.computation):undefined;record.receipt=receipt;record.answer=answer;record.status='SETTLED';config.journal.save(id,record);return {answer,payment:receipt,computation:record.computation};
+  const body=JSON.parse(await readLimitedText(paid,262144));if(quote.bundle){const answers:AnswerEnvelope[]=Array.isArray(body.answers)?body.answers.map((value:unknown)=>AnswerEnvelopeSchema.parse(value)):[];if(answers.length!==quote.bundle.items.length||answers.some((answer,index)=>answer.runId!==quote.runId||answer.acceptedQuoteId!==quote.quoteId||answer.questionTemplateId!==quote.bundle!.items[index]!.questionTemplateId||answer.providerId!==quote.bundle!.providerId))throw new Error('PAID_ANSWER_BINDING_MISMATCH');record.answers=answers;}const answer=AnswerEnvelopeSchema.parse(body.answer);if(answer.runId!==quote.runId||answer.acceptedQuoteId!==quote.quoteId)throw new Error('PAID_ANSWER_BINDING_MISMATCH');record.computation=body.computation?ComputationResultSchema.parse(body.computation):undefined;record.receipt=receipt;record.answer=answer;record.status='SETTLED';config.journal.save(id,record);return {answer,payment:receipt,computation:record.computation,answers:record.answers};
  }catch(error){if(record.status!=='SUBMITTED'&&!record.receipt){record.status='NOT_SUBMITTED';config.journal.save(id,record);throw new Error(error instanceof Error&&error.message==='LEASE_EXPIRED_OR_CANCELLED'?'LEASE_EXPIRED_OR_CANCELLED':'PAYMENT_NOT_SUBMITTED');}record.status=record.receipt?'SETTLED_DELIVERY_FAILED':'UNKNOWN';config.journal.save(id,record);throw new Error(record.receipt?'PAYMENT_SETTLED_DELIVERY_FAILED':'PAYMENT_RECONCILIATION_REQUIRED');}
 }
 export function paymentDigest(quote:PaymentQuote){return createHash('sha256').update(canonical(quote)).digest('hex');}

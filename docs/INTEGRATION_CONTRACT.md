@@ -268,3 +268,15 @@ Parquet `payload_json` for verification response should include the **complete p
 Validation additionally enforces exact numeric answer strings, nonnegative integer minor units, rounds 1–3, UTC timestamps, URL syntax, SHA-256 hex strings, and matching request/answer correlation IDs and evidence policy IDs. `SIGNED_PROVIDER` requires a signature field, but structural validation does not cryptographically verify it. `ACCEPTED` requires at least one check with every supplied check passing; the verifier still must enforce policy-required checks and independent evidence.
 
 Conversation event types are finite: `DISCOVERY_STARTED`, `DISCOVERY_RESULT`, `DISCOVERY_FAILED`, `A2A_SENT`, `A2A_RECEIVED`, `QUOTE`, `NEGOTIATION_OUTCOME`, `ANSWER_REQUESTED`, `ANSWER_DELIVERED`, `VERIFICATION_REQUEST`, `VERIFICATION_RESULT`, `TIMEOUT`, and `ERROR`. URL validation is syntactic only; transport code must enforce destination allowlists and SSRF protection.
+
+## Proposed additive fixed-price bundle contract
+
+`FixedQuoteRequestSchema` and `FixedBundleQuoteSchema` in `packages/contracts/src/bundle.ts` define the new fixed-pricing HTTP boundary. These additions remain proposed until both contributors review them; this change does not freeze a new shared schema version.
+
+A signed lease can optionally carry `measurementIds`, a nonempty unique selection of public read templates. New dashboard mandates use exactly one provider and no schedule. Legacy leases without this field retain their previous execution path.
+
+The provider's quote binds the run, quote ID, provider, Hedera recipient, currency, expiry, freshness requirement, ordered item prices and exact integer total. `/fixed-quotes` reads tariff metadata only. `/fixed-quotes/prepare` prepares the complete selected delivery after the buyer validates the quote and reserves the full total. Neither route bargains or invokes negotiation inference. Changing selection creates a new quote; preparing tampered terms fails.
+
+One x402 payment unlocks all selected answers. Each answer shares the bundle run and accepted quote IDs but retains its own question template and verification ID. Arkiv stores one shared payment reference for the entire total and separate eligible answer/verification receipts. A common settlement timestamp makes repeated payment-reference publication idempotent. `RunPublicationInput.payment.settledAt` is optional for backward compatibility.
+
+Payment, delivery, each verification, and each publication remain separate outcomes. An unknown settlement holds the entire reservation. Replaying a run does not pay again. Failed source preparation occurs before payment. Mixed evidence outcomes may produce partial publication; the application must not describe every item as accepted merely because another item passed.
