@@ -1,16 +1,156 @@
 # Data Leases
 
-Rent the answer. Not the team.
+**Rent the answer. Not the team.**
 
-This first implementation slice includes shared Zod contracts, two independently running A2A providers, local discovery, and a buyer that negotiates over HTTP using the official `@a2a-js/sdk` 1.3.0 (A2A 1.0). Optional 0G inference uses a replaceable server-only adapter.
+Select one or more public measurements, compare providers, choose one agent, and set a spending limit. Each time you request the selected bundle, your buyer agent confirms a fixed itemized quote and pays the selected provider through x402 on Hedera testnet. You can inspect the answer, payment and source checks together.
 
-## Run
+Example: you want to know how much USDC liquidity is available on Aave. Instead of building a pipeline or buying an entire data subscription, choose a provider and request that measurement when you need it.
 
-Use Node 22 or later and pnpm 10.28.1.
+## Start locally
+
+Use Node 22.13 or later and pnpm 10.28.1.
 
 ```sh
 pnpm install
-pnpm demo:a2a
+cp .env.example .env
+# Configure the required services in your local .env.
+pnpm dev
+```
+
+Keep API keys and wallet secrets in the ignored `.env`; never commit them. `pnpm dev` loads this file automatically. Other commands may need environment variables supplied separately.
+
+- Landing page: http://localhost:3001
+- Dashboard: http://localhost:3001/dashboard
+- Gateway API: http://127.0.0.1:3000
+- Six separate provider services: ports 4101–4106
+- Older diagnostic console: http://localhost:3001/developer
+
+Check **Connections** before attempting a purchase. Payments require a funded buyer account, configured merchant recipients and an active spending mandate. CRE CLI simulation requires its local runtime and authentication. Arkiv discovery/publication requires configured access and publisher settings. See [payment setup](docs/PAYMENTS.md), [provider setup](docs/PROVIDER_DIVERSITY.md), [compute setup](docs/COMPUTE.md) and [CRE setup](docs/CRE_HANDOFF.md).
+
+## Complete buyer workflow
+
+### 1. Select measurements
+
+Select a service in the dashboard, then check only the measurements you need, such as **Aave USDC available liquidity** or **Aave USDC supply APY**. Review what it returns, its units and its source requirements.
+
+**Use case:** a protocol analyst needs a current reserve measurement rather than a general chatbot response. Start with a supported public read; private or subjective services without a real source cannot produce independently accepted evidence.
+
+### 2. Compare agents
+
+Open **Compare agents** to inspect fixed bundle totals and provider details. Six local provider profiles offer different task-specific tariffs:
+
+| Provider | Port | Pricing style | USDC liquidity starting ask | USDC supply APY starting ask |
+| --- | --- | --- | ---: | ---: |
+| Scout | 4101 | Flexible | 500 | 850 |
+| Atlas | 4102 | Balanced | 700 | 600 |
+| Sage | 4103 | Firm | 950 | 800 |
+| Quill | 4104 | Flexible | 650 | 550 |
+| Beacon | 4105 | Firm | 1,100 | 1,000 |
+| Meridian | 4106 | Balanced | 800 | 650 |
+
+Checkboxes select the measurements in your bundle. The total is the sum of the selected item prices. One request makes one x402 payment to one provider; each measurement retains its own verification result. Changing the selection requires selecting a provider and a matching mandate again.
+
+Amounts are **tinybars**, the smallest HBAR unit. One HBAR equals 100,000,000 tinybars. These are illustrative configured tariffs, not model API costs or guarantees of quality. The fixed quote confirms the selected items, their prices, total, recipient and expiry. No bargaining or inference is required. The style column describes legacy agent profiles, not a price negotiation in this flow.
+
+Arkiv supplies published offers. Local drafts remain clearly labeled and cannot be selected for a paid mandate. An operator can explicitly publish eligible configured offers for the selected service from **Connections**. A provider needs a configured merchant recipient before it can sell; an unconfigured provider stays quote-only.
+
+**Use case:** Scout has the lowest listed liquidity ask in these defaults, while Quill has the lowest APY ask. Compare prices for the actual task rather than assuming one agent is always cheapest.
+
+### 3. Select one provider and set a mandate
+
+Choose an eligible published provider, then open **Mandate**. Set:
+
+- **Per-request cap:** the most one selected bundle may cost.
+- **Total budget:** the most all requests under this mandate may consume.
+- **Expiry:** when authorization ends.
+- **Freshness:** how recent the source must be.
+
+Save the mandate. If World approval is enabled, complete the required authorization. The mandate pins the selected provider; another agent cannot silently replace it.
+
+**Saving a mandate starts no work and makes no payment.** Opening the dashboard or changing services also starts no new source read or model inference. Reading existing metadata and history is separate from purchasing an answer.
+
+**Use case:** permit Scout to charge at most 500 tinybars per request and 1,000 total, until an expiry you choose. Repeated purchases share that total budget.
+
+### 4. Request an answer
+
+Click **Request selected answers · pay with x402**. This starts one explicit run. The buyer confirms a fixed quote through the provider’s HTTP pricing API, reserves the complete bundle amount and requests preparation. No model negotiates a discount. Then one x402 payment unlocks the selected answers.
+
+If the fixed total exceeds your limits, a selected item is unavailable, or published rates no longer match, the purchase does not proceed. Model suggestions cannot raise your budget, bypass the provider allowlist or authorize unrestricted spending.
+
+**Use case:** an analyst requests a fresh snapshot before a report. A second snapshot requires another explicit request. New mandates have no automatic schedule; previously authorized recurring leases retain their existing scheduling policy.
+
+### 5. Pay through Hedera x402
+
+After agreement, the provider returns HTTP **402 Payment Required** with the amount, recipient and payment terms. The buyer validates them, signs a Hedera payment payload and sends it back. The facilitator verifies and settles the transfer. The provider returns the answer and payment receipt.
+
+The implementation uses the `@x402/hedera` exact-payment scheme with **native HBAR on Hedera testnet**. A durable payment journal guards against duplicate payments for the same run. An uncertain settlement requires reconciliation rather than an automatic new payment.
+
+**Use case:** the consumer agent pays a small amount for each requested answer without a separate manual checkout each time, within the mandate already authorized.
+
+A previously recorded payment of **500 tinybars** was independently confirmed as `SUCCESS` through Hedera's mirror node: [HashScan transaction](https://hashscan.io/testnet/transaction/0.0.9185802%401794003997.250574098). Its public-safe record is in [connected-run.json](arkiv/evidence/connected-run.json). This is evidence of that historical run, not proof that every provider or service has been purchased successfully.
+
+### 6. Check the answer with CRE
+
+Each answer in the bundle includes its measurement and relevant source information. For supported public reads, the gateway submits it to the local **Chainlink CRE CLI simulation**. The workflow checks policy requirements and compares independent EVM and HTTP reference observations.
+
+- **Accepted:** every required check passed.
+- **Rejected:** a required check failed.
+- **Inconclusive:** evidence was unavailable, unsupported or incomplete.
+
+Accepted Aave results include the source-contract check required for Arkiv receipt publication. A failed check must not be hidden or converted into a success.
+
+**Use case:** distinguish a provider's claimed liquidity value from a value whose supported source checks actually passed. CRE evaluates the answer; it does not negotiate or authorize spending.
+
+**CRE CLI simulation is not a live DON execution.** Mock tests are labeled separately. Payment settlement also does not establish answer correctness or trigger an automatic refund.
+
+### 7. Inspect Arkiv records and service history
+
+Each eligible accepted measurement can publish its own public-safe evidence receipt to Arkiv. All receipts share one run and one payment reference for the full bundle total; they are not separate charges. Open **Service history** to inspect published offers, verification metadata and payment references with explorer links. Private paid answers are not automatically republished as public values.
+
+Arkiv publication has its own status. If it fails, the application retains the answer, payment and verification outcome; a publication retry must not create another purchase.
+
+**Use case:** compare published providers and inspect previous service records without relying only on the current browser session.
+
+### 8. Request again, or stop
+
+Reuse the saved mandate for another explicit request. Each request uses the selected provider and consumes the available budget according to its payment outcome. Review remaining budget and request history. Cancel the mandate when finished; expiry or exhausted budget also blocks further spending.
+
+**Use case:** take several measurements during a review session without repeatedly setting payment permissions, while retaining a hard total spending limit.
+
+## What each component does
+
+| Component | Simple job | Example use case |
+| --- | --- | --- |
+| Dashboard | Choose services, compare agents, set limits and inspect results | An analyst requests an Aave snapshot |
+| Buyer agent and gateway | Coordinate fixed quotes, authorization and delivery | Buy from the selected provider within a saved mandate |
+| Provider agents | Quote prices and deliver a supported answer | Offer selected public measurements at different fixed rates |
+| A2A | Retain structured agent communication for legacy negotiation tools | Inspect older quote exchanges; the new bundle flow uses fixed HTTP pricing endpoints |
+| Claude / OpenRouter / optional 0G | Supply configured model inference for agent decisions or supported computation | Suggest a price action, subject to deterministic guards |
+| Hedera + x402 | Settle each authorized answer purchase | Transfer the agreed HBAR amount to the merchant |
+| Chainlink CRE CLI | Check supported answers against reference evidence | Reject a mismatching value or mark missing evidence inconclusive |
+| Arkiv | Store and query public offers and eligible evidence records | Compare providers and browse service history |
+| SQLite + Parquet | Keep durable operational state and inspectable event history | Recover run state and inspect recorded agent exchanges |
+| Optional World approval | Gate buyer authorization when enabled | Require the configured identity approval before a mandate becomes usable |
+
+Different models or prices do not establish independent data ownership or better accuracy. Agents reading the same public chain still share that underlying source. Keys stay server-side; models cannot override payment or verification rules.
+
+For direct Claude inference, set `ANTHROPIC_API_KEY` in the ignored `.env`. Provider-specific backend and model overrides are described in [provider diversity](docs/PROVIDER_DIVERSITY.md). Never put API keys in browser code.
+
+## How to test
+
+Start with **Aave USDC available liquidity**, choose a published provider and authorize a small testnet mandate. For Scout's default ask, 500 tinybars per request and 1,000 total permit at most two single-item purchases. Adding measurements increases the bundle total.
+
+1. Save the mandate and confirm no run or payment starts.
+2. Request one answer. Inspect the itemized quote, payment, answers and each verification separately.
+3. Check any eligible Arkiv receipt and **Service history** entry.
+4. Request again with the same mandate; verify the same provider and reduced remaining budget.
+5. Cancel the mandate and confirm a further request cannot spend.
+6. Try an insufficient price ceiling, expired mandate and unavailable source. Expect explicit failure or inconclusive evidence, never fabricated success.
+7. Check duplicate-run protection, restart persistence and mobile readability using the [full testing workflow](docs/TESTING_WORKFLOW.md).
+
+Run automated checks:
+
+```sh
 pnpm typecheck
 pnpm lint
 pnpm test
@@ -18,57 +158,44 @@ pnpm test:integration
 pnpm build
 ```
 
-`demo:a2a` starts providers on `127.0.0.1:4101` and `:4102`, runs a separate buyer process, prints discovered cards and actual negotiation messages, then stops all three processes. Keep those ports available. Provider A asks 500 minor units, accepts a counteroffer of 350; Provider B has a floor of 400 and rejects the buyer's 350 cap. `demo:USD6` has six decimal places. Prices are exact integer strings compared with BigInt; no funds move.
-
-For manual operation, run two terminals:
+Run a separate real CRE CLI simulation for one public service:
 
 ```sh
-PORT=4101 PROVIDER_ID=provider-a ASK_MINOR=500 FLOOR_MINOR=300 pnpm dev:provider
-PORT=4102 PROVIDER_ID=provider-b ASK_MINOR=700 FLOOR_MINOR=400 pnpm dev:provider
+pnpm cre:simulate:services AAVE_V3_USDC_AVAILABLE_LIQUIDITY
 ```
 
-Then run `pnpm demo:buyer`. Cards are at `/.well-known/agent-card.json`; the JSON-RPC endpoint is `/a2a`. Negotiation is application-specific structured A2A data, not a new native protocol method. Responses are A2A Messages; this slice does not create long-running Tasks.
+This needs a configured CLI/runtime and reachable sources. Automated fixtures do not prove live settlement, real model inference or onchain publication. Generated local artifacts belong under ignored `data/tmp`, not Git.
 
-## Compute
+For a standalone negotiation-only demonstration, use `pnpm demo:a2a`. This uses separate local buyer/provider processes and demo pricing; it is not evidence of an HBAR payment.
 
-See [0G setup](docs/COMPUTE.md). Default `COMPUTE_PROVIDER=mock` runs without credentials. With server environment variables configured, `COMPUTE_PROVIDER=0g pnpm demo:a2a` makes one optional advisory request after negotiation. Generated text does not choose destinations, prices, or verification outcomes. Copy `.env.example` to `.env` if useful, then load variables into your shell; commands do not automatically load `.env`.
+The current checkbox bundle flow supports public read measurements. Existing computation, negotiation and scheduled-lease APIs remain available for older integrations; they are not silently converted into new bundles.
 
-A future Claude implementation plugs into `ComputeAdapter.generate` without changing A2A transport or deterministic budget enforcement. Claude calls are not implemented yet. 0G live inference requires provider credentials and a funded testnet account; no live request has been validated here.
+## Current limits and further reading
 
-## Status and boundaries
+This is a local testnet prototype. Buyer keys are held server-side, and mandate limits are enforced by the application rather than an onchain spending contract. Paid resource URLs are restricted to local provider endpoints. Public deployment needs additional operational and security work. No mainnet payment, live DON verification, guaranteed refund or validated investment advice is implied.
 
-All providers are `DEMO_UNTRUSTED`. Current output proves transport and negotiation only. Mock answer delivery and a local development console are available. SSE, durable events, Parquet writing, CRE execution, payments, and Arkiv integration remain pending. Transcripts are in memory/stdout and disappear on restart. Provider state also resets on restart. The local provider has no authentication; it binds only to loopback and is not ready for public hosting.
+Supported public read plans can fetch real chain data. Private and subjective services without implemented sources remain unsupported or inconclusive; catalog availability alone does not establish a real data integration. Historical results do not verify a new request.
 
-Contracts and fixtures are proposed v1 and still need both contributors' review. Read [CLAUDE.md](CLAUDE.md), [SKILLS.md](SKILLS.md), [AGENTS.md](AGENTS.md), and [integration contract](docs/INTEGRATION_CONTRACT.md) before expanding the implementation. CRE-owned paths remain separate.
+Shared contracts remain subject to both contributors' review before freezing. Contributors should read [CLAUDE.md](CLAUDE.md), [SKILLS.md](SKILLS.md), [AGENTS.md](AGENTS.md) and the [integration contract](docs/INTEGRATION_CONTRACT.md).
 
-## Browser test console
+Additional implementation references: [verification and Arkiv](docs/VERIFICATION_ARKIV.md), [service catalog](docs/SERVICE_CATALOG.md), [CRE handoff](docs/CRE_HANDOFF.md), [AI negotiation](docs/AI_NEGOTIATION.md), [existing recurring leases](docs/RECURRING_LEASES.md), and [developer handoff](docs/DEVELOPER1_IMPLEMENTATION.md). Some older handoff documents describe earlier milestones; the workflow above describes the current dashboard.
 
-Configure OpenRouter in ignored `.env` as described in [compute setup](docs/COMPUTE.md), then run:
+## World Agent Pass buyer workspace
 
-```sh
-pnpm dev
-```
+The dashboard's **Account** view supports World sign-in, owned leases, committed spending, and exact policy approval review. The backend uses OIDC authorization code flow with S256 PKCE, discovery, RS256 signature validation, issuer/audience/nonce checks, fresh authentication, and server-side flow binding. Sandbox identities are test identities; they do not establish production proof of humanity.
 
-Open `http://127.0.0.1:3000` for the product landing page and brief plan. Select **Try the agent demo** or visit `http://127.0.0.1:3000/demo`. The local console provides negotiation transcripts and a separate AI prompt panel. Provider processes run on 4101 and 4102. This is a lightweight development console, not the planned Next.js dashboard. SSE, persistence, live data, and verification remain pending.
+Register a client using the [official Agent Pass OIDC guide](https://auth.world.org/docs/guides/oidc). Set `WORLD_CLIENT_ID`, `WORLD_CLIENT_SECRET`, `WORLD_ISSUER`, and the exact registered `WORLD_REDIRECT_URI` in your private environment. Set `WORLD_AUTH_ENABLED=true`. For loopback development only, explicitly set `WORLD_ALLOW_LOCAL_HTTP=true` and use `http://127.0.0.1:3001/api/auth/world/callback`. Use the same browser hostname throughout. Production requires HTTPS and secure cookies. Restart `pnpm dev`, open `/dashboard`, then choose **Account** and sign in.
 
-## Mock use cases and communication walkthrough
+Enabled mode protects lease and run reads, mutations, event streams, and Parquet history with buyer ownership checks. Session tokens are opaque, hashed in private SQLite storage, expiring, revocable, and carried in HttpOnly cookies. Authenticated mutations require CSRF tokens. Existing unowned demo resources are not adopted by a newly signed-in buyer. Legacy direct checkout is disabled in protected mode; paid execution uses an owned lease.
 
-The console follows the navy/amber visual direction in `specs.md` and exposes three question templates:
+Authorizing a lease first creates a pending approval without enabling payment. Review its exact terms in Account, confirm, and complete fresh World authentication. Only the verified callback can atomically activate or revise the policy. Denial, expired approvals, altered bindings, replay, and stale revisions cannot increase authority. Lowering limits, pausing, and cancelling require the owner session without another World flow. Scheduled runs retain durable policy authorization after browser logout; logout closes interactive access. Settled and unresolved payment commitments remain counted after revisions.
 
-- Aave V3 USDC available liquidity: synthetic 1,250,000 USDC, encoded as raw six-decimal units.
-- Aave V3 USDC utilization: synthetic 67.5%, encoded as 6,750 basis points.
-- DAO treasury risk snapshot: illustrative synthetic score 32/100, extending the treasury-monitoring persona; no validated financial methodology.
+Direct library callers can explicitly disable buyer authentication for isolated local tests. The runnable gateway always enables buyer protection. Authentication and approval tests use signed synthetic OIDC fixtures; a real registered-client browser journey and sponsor submission evidence remain pending. Buyer schemas remain proposed pending contributor signoff.
 
-Select a template, set a price ceiling, and choose **Discover & negotiate**. At 350 minor units Provider A counters and agrees; Provider B rejects. At 250 neither delivers an answer. At 700 both agree. Inspect either provider's recorded exchange and raw data parts. Accepted terms return a second structured A2A data part containing a correlated `AnswerEnvelope`; the browser displays it as **MOCK / delivered unverified**. No contract address, chain block, signature, payment receipt or CRE proof is fabricated.
+## Public and private dashboards
 
-The browser shows completed HTTP exchanges, not a live SSE stream. AI explanations are optional and separate from price decisions. **Use current run as context** prepares a summary prompt; sending it requires a separate click.
+**Public dashboard** queries Arkiv for data-type usage, published entities, confirmed testnet spending, purchase counts, and spending by receipt publication date. It deduplicates shared bundle transactions before summing exact tinybars. These are bounded, unexpired records for configured providers, not lifetime network revenue. No USD conversion or personal spending attribution is inferred.
 
-## CRE branch review
+**My dashboard** uses the World-authenticated buyer session to show owned reports, settled spending, unresolved reservations, and lease approvals. Full reports and buyer-to-World mappings remain in private gateway storage. Entity statistics and public spend do not include buyer identities. Hedera transfers and existing public Arkiv payment references remain inspectable; this feature does not make blockchain transactions private.
 
-The teammate CRE branch was reviewed without merging. See [integration review](docs/CRE_REVIEW.md) for verified checks, contract reconciliation, supported metric limits, and remaining fixes.
-
-## LINK decimals and CRE integration
-
-The fourth question card negotiates LINK token decimals (`ERC20_TOKEN_METADATA`, `link-decimals-v1`). The synthetic answer is 18 decimal places and identifies the LINK contract, without fabricating a block reference. Gateway verification uses the shared `MockVerificationClient`; missing independent evidence returns `MOCK / INCONCLUSIVE`. Unsupported Aave/treasury methods also remain inconclusive. Expand the receipt to inspect individual checks.
-
-All teammate CRE workflow, tooling and saved simulation evidence are included. See [CRE handoff](docs/CRE_HANDOFF.md) for Bun/CLI installation, authentication and fresh simulation reproduction. Recorded CLI results are historical evidence, not verification of a fresh buyer run.
+The runnable gateway requires authentication for buyer resources even before World credentials are supplied. Add the registered `WORLD_CLIENT_ID`, `WORLD_CLIENT_SECRET`, issuer, and exact callback URL from `.env.example` before signing in. For loopback development, explicitly set `WORLD_ALLOW_LOCAL_HTTP=true`. Public analytics and listings stay readable without sign-in. World sign-in and action approvals have been tested with signed OIDC fixtures; a live registered-client journey still requires your credentials.

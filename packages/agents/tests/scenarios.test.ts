@@ -1,9 +1,9 @@
 import { expect, test } from 'vitest';
-import { AnswerEnvelopeSchema } from '@data-leases/contracts';
+import { AnswerEnvelopeSchema,RESEARCH_TASKS } from '@data-leases/contracts';
 import * as agents from '../src/index.js';
 const templates = ['AAVE_V3_USDC_AVAILABLE_LIQUIDITY', 'AAVE_V3_USDC_RESERVE_UTILIZATION', 'DAO_TREASURY_RISK_SNAPSHOT'];
 test('catalog marks every measurement synthetic and separates roadmap extension', () => {
- expect(agents.DEMO_SCENARIOS).toHaveLength(4);
+ expect(agents.DEMO_SCENARIOS).toHaveLength(26+RESEARCH_TASKS.length);
  expect(agents.DEMO_SCENARIOS.every(scenario => scenario.demoTrustMode === 'UNTRUSTED_MOCK')).toBe(true);
  expect(agents.DEMO_SCENARIOS[2]?.description).toContain('Illustrative extension');
 });
@@ -55,3 +55,10 @@ test('LINK decimals negotiates policy-specific terms and remains an unverified m
   expect(result.transcript.every(turn => turn.evidencePolicyId === 'link-decimals-v1')).toBe(true);
  } finally { await provider.close(); }
 });
+
+test('AI computation uses the existing A2A loop, a distinct rate, and executes only after acceptance',async()=>{
+ let calls=0;
+ const provider=await agents.startProvider({port:0,providerId:'compute-provider',askMinor:'500',floorMinor:'300',compute:{generate:async()=>{calls++;return {provider:'OPENROUTER',model:'test:injected',text:'Test-only model output; not a live inference.'};}}});
+ try{const quote=await agents.negotiate({baseUrl:provider.baseUrl,providerId:'compute-provider',maxPriceMinor:'2000',questionTemplateId:'AI_LINK_EXPLANATION',quoteOnly:true});expect(quote.quote?.priceMinor).toBe('1000');expect(calls).toBe(0);const result=await agents.negotiate({baseUrl:provider.baseUrl,providerId:'compute-provider',maxPriceMinor:'2000',questionTemplateId:'AI_LINK_EXPLANATION',acceptQuote:quote.quote});expect(result.status).toBe('AGREED');expect(result.computation?.text).toContain('Test-only');expect(result.answer?.metric).toBe('demo.ai_report.generated_count');expect(calls).toBe(1);}finally{await provider.close();}
+});
+test('providers without a computation adapter do not advertise AI work',async()=>{const provider=await agents.startProvider({port:0,providerId:'read-only-provider',askMinor:'500',floorMinor:'300'});try{const card=await (await fetch(provider.baseUrl+'/.well-known/agent-card.json')).json();expect(card.skills.some((skill:{id:string})=>skill.id==='AI_LINK_EXPLANATION')).toBe(false);}finally{await provider.close();}});

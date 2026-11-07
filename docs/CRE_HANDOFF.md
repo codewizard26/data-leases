@@ -202,3 +202,50 @@ separately reviewed lending policy and its exact source calculations are impleme
 Listener mode, deployed DON execution, provider-signature verification and durable queue
 storage remain outside this proof. Unavailable-reference handling is covered by deterministic
 offline tests; the real third simulation demonstrates block ambiguity, not an induced outage.
+
+## Service simulations and live dashboard update (2026-11-07)
+
+The product uses **CRE CLI simulation**. A deployed DON is not a prerequisite for the dashboard or purchases. The default gateway no longer replaces the simulation adapter with an unavailable live-DON adapter.
+
+`packages/cre-adapter/src/service-catalog.ts` contains verification metadata for all 25 active services. A parity test compares it with the provider catalog. No shared schema changes were required. Existing v1 method identifiers remain compatible; the actual observation source and execution mode determine evidence, not the old synthetic fixture value.
+
+`read-plans.ts` supplies fixed Ethereum calls for 13 public services:
+
+- LINK, USDC and WETH decimals; Chainlink ETH/USD feed decimals.
+- Aave V3 USDC and WETH available liquidity and utilization.
+- Aave USDC variable debt, supply APY, variable borrow APY, liquidation threshold and loan-to-value.
+
+Available liquidity means underlying token `balanceOf(aToken)`. Utilization is variable debt divided by available liquidity plus variable debt, floored to basis points. This explicitly excludes an independent assessment of Aave's virtual-accounting borrow availability. APY compounds the per-second ray APR for 31,536,000 seconds with fixed-point arithmetic, then floors to basis points. It is not a reward-inclusive or forecast yield. Rates and configuration are decoded from fixed Aave calls, with exact integer arithmetic.
+
+PublicNode supplies provider observations and the CRE EVM capability. CRE's HTTP capability independently queries **dRPC** at the same explicit block. The two transports read the same blockchain; this is a check of returned state, not independent validation of a financial methodology. Every comparison requires matching block number/hash, metric, units, policy, and freshness. Provider signatures use local Ed25519 identities separate from payment wallets; the simulation wrapper reads locally provisioned public keys for provider-a and provider-b into an ignored local configuration. That local trust setup is not a public identity registry.
+
+Sources checked:
+
+- [Aave address registry](https://github.com/aave-dao/aave-address-book/blob/main/src/AaveV3Ethereum.sol).
+- [Aave data provider implementation](https://github.com/aave-dao/aave-v3-origin/blob/main/src/contracts/helpers/AaveProtocolDataProvider.sol).
+- [dRPC public Ethereum API](https://drpc.org/docs/ethereum-api).
+- [CRE HTTP client and base64 request body](https://docs.chain.link/cre/reference/sdk/http-client-ts).
+
+The remaining 12 services have explicit `INCONCLUSIVE` paths. Private services require an authorized independent reference and an agreed measurement method. Treasury risk needs a reproducible methodology. The AI explanation's numeric generated-count envelope does not bind or prove the actual text, so it cannot establish answer correctness. No fixed synthetic value is treated as independent evidence. Retired report writes are absent from verification routing.
+
+Reproduce all service simulations, or select one:
+
+```sh
+pnpm cre:simulate:services
+pnpm cre:simulate:services AAVE_V3_USDC_AVAILABLE_LIQUIDITY
+
+# Prepare requests and run the normal artifact-validated wrapper directly:
+pnpm cre:prepare:services AAVE_V3_USDC_AVAILABLE_LIQUIDITY
+pnpm cre:simulate data/tmp/cre/services/AAVE_V3_USDC_AVAILABLE_LIQUIDITY.json
+pnpm cre:simulate data/tmp/cre/services/AAVE_V3_USDC_AVAILABLE_LIQUIDITY.tampered.json
+```
+
+Each request is prepared immediately before its batch simulation. `data/tmp/cre/service-summary.json` records actual outcomes and artifact paths; failed CLI runs remain `SIMULATION_FAILED`. No fixture tests or WASM compilation are counted as successful CLI execution. Public RPC failures remain inconclusive rather than falling back to sample data. The HTTP response bound allows normal Ethereum block headers with transaction-hash lists while remaining below the CRE HTTP response limit.
+
+The dashboard's public watch feed refreshes independently running providers every 20 seconds. It displays source timestamps and blocks, retains old observations on failure, and highlights values only when the actual value changes. These free public source observations are explicitly separate from A2A negotiation, x402 payment, and verification. Each feed event is stored through the existing canonical event store. The “Verify snapshot with CRE” action verifies a particular server-held snapshot; a result does not automatically verify subsequent source updates. CLI failures remain visible and unverified.
+
+Observed in this update: all 25 service workflows completed under the real CLI. Thirteen public-source cases returned `ACCEPTED`; the twelve services without independent references returned `INCONCLUSIVE`. The original attempt exposed an HTTP block-response size limit, which was corrected before rerunning affected public cases. The local summary retains the final per-service artifact references. Offline validation passed 272 tests, strict typecheck and lint; the dashboard production build also passed. These observations do not claim a DON deployment or verified private data.
+
+Browser verification also completed a signed public-provider snapshot with `CRE_CLI_SIMULATION / ACCEPTED`. A fresh Aave liquidity answer modified by one raw unit returned `REJECTED`, with `ONCHAIN_REFERENCE_MATCH` failing. Desktop and mobile browser checks used real provider responses; no fixture feed was substituted.
+
+The dashboard source feed is now on demand: **Request update** fetches one batch, then closes the stream. The earlier 20-second polling behavior is superseded. Page visits and task changes do not start new source reads or inference. Saved snapshots are not silently refreshed.

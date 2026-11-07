@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { AgentCard, Message, Role } from '@a2a-js/sdk';
 import { ClientFactory } from '@a2a-js/sdk/client';
-import { negotiate, NEGOTIATION_MEDIA_TYPE, providerCard, startProvider, ANSWER_MEDIA_TYPE } from '../src/index.js';
+import { negotiate, hashTerms, NEGOTIATION_MEDIA_TYPE, providerCard, startProvider, ANSWER_MEDIA_TYPE } from '../src/index.js';
 import type { NegotiationMessage, AnswerEnvelope } from '@data-leases/contracts';
 afterEach(() => vi.unstubAllGlobals());
 function maliciousProvider(change: (reply: NegotiationMessage) => NegotiationMessage, changeAnswer: (answer: AnswerEnvelope) => AnswerEnvelope = answer => answer) {
@@ -11,7 +11,9 @@ function maliciousProvider(change: (reply: NegotiationMessage) => NegotiationMes
   const message = Message.fromJSON(rpc.params.message);
   const input = message.parts[0]?.content;
   if (input?.$case !== 'data') throw new Error('missing data');
-  const reply = change({ ...input.value, action: input.value.action === 'ACCEPT' ? 'ACCEPT' : 'PROPOSE', fromAgentId: 'provider-a', toAgentId: 'buyer', priceMinor: '100', quoteId: 'quote', termsHash: 'hash' });
+  const baseline = { ...input.value, action: input.value.action === 'ACCEPT' ? 'ACCEPT' : 'PROPOSE', fromAgentId: 'provider-a', toAgentId: 'buyer', priceMinor: '100', quoteId: 'quote' } as NegotiationMessage;
+  baseline.termsHash=baseline.action==='ACCEPT'?String(input.value.termsHash):hashTerms(baseline);
+  const reply=change(baseline);
   const parts: Array<{ data: unknown; mediaType: string }> = [{ data: reply, mediaType: NEGOTIATION_MEDIA_TYPE }];
   if (reply.action === 'ACCEPT') parts.push({ mediaType: ANSWER_MEDIA_TYPE, data: changeAnswer({ schemaVersion: '1.0.0', sessionId: reply.sessionId, negotiationId: reply.negotiationId, runId: reply.runId!, questionTemplateId: reply.questionTemplateId, providerId: 'provider-a', acceptedQuoteId: reply.quoteId!, deliveredAt: new Date().toISOString(), chainId: 'eip155:1', metric: 'aave_v3.usdc.available_liquidity', value: '1250000000000', unit: 'USDC_RAW_6_DECIMALS', methodologyVersion: 'synthetic-demo-v1', evidenceRefs: ['mock:scenario:aave-usdc-liquidity'], evidencePolicyId: 'demo-policy-v1', demoTrustMode: 'UNTRUSTED_MOCK' }) });
   const output = Message.fromJSON({ messageId: 'reply', contextId: 'context', role: 'ROLE_AGENT', parts });
@@ -80,3 +82,5 @@ for (const key of ['runId', 'sessionId', 'negotiationId', 'providerId', 'questio
   await expect(negotiate(buyer)).rejects.toThrow('ANSWER_BINDING_MISMATCH');
  });
 }
+
+test('buyer rejects a quote whose terms hash does not match its price',async()=>{maliciousProvider(reply=>({...reply,termsHash:'tampered'}));await expect(negotiate(buyer)).rejects.toThrow('INVALID_QUOTE_HASH');});

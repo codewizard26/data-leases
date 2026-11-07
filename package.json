@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.28.1",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "build": "pnpm -r build",
@@ -17,7 +17,11 @@
     "demo:buyer": "tsx apps/agent-gateway/src/buyer.ts",
     "dev": "node --env-file=.env --import tsx scripts/dev.ts",
     "cre:prepare": "pnpm --filter @data-leases/cre-adapter cre:prepare",
-    "cre:simulate": "pnpm --filter @data-leases/cre-adapter cre:simulate"
+    "cre:simulate:services": "node --import tsx scripts/simulate-services.ts",
+    "cre:prepare:services": "tsx scripts/prepare-services.ts",
+    "cre:simulate": "pnpm --filter @data-leases/cre-adapter cre:simulate",
+    "dev:web": "pnpm --filter @data-leases/web dev",
+    "parquet:inspect": "tsx scripts/parquet-inspect.ts"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",
@@ -30,7 +34,8 @@
     "vitest": "3.2.4",
     "zod": "3.25.76",
     "@data-leases/contracts": "workspace:*",
-    "@data-leases/cre-adapter": "workspace:*"
+    "@data-leases/cre-adapter": "workspace:*",
+    "@data-leases/event-store": "workspace:*"
   },
   "type": "module"
 }

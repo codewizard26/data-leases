@@ -1,6 +1,8 @@
 import { createComputeAdapter, negotiate } from '@data-leases/agents';
 import { LocalRegistryDiscovery } from '@data-leases/discovery';
-const origins = ['http://127.0.0.1:4101', 'http://127.0.0.1:4102'];
+const configuredOrigins: unknown = process.env.DEMO_PROVIDER_ORIGINS ? JSON.parse(process.env.DEMO_PROVIDER_ORIGINS) : ['http://127.0.0.1:4101', 'http://127.0.0.1:4102'];
+if (!Array.isArray(configuredOrigins) || configuredOrigins.length !== 2 || !configuredOrigins.every((value: unknown) => typeof value === 'string' && /^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(value) && new URL(value).port !== '0')) throw new Error('INVALID_DEMO_PROVIDER_ORIGINS');
+const origins = configuredOrigins as string[];
 const cards = origins.map(origin => `${origin}/.well-known/agent-card.json`);
 const discovery = new LocalRegistryDiscovery(cards, { allowedCardUrls: cards, allowedEndpointUrls: origins.map(origin => `${origin}/a2a`) });
 const providers = await discovery.discover({ schemaVersion: '1.0.0', sessionId: crypto.randomUUID(), mode: 'LOCAL_REGISTRY', questionTemplateId: 'ETHEREUM_LENDING_LIQUIDITY', maxPriceMinor: '350', currency: 'demo:USD6', maxAgeSeconds: 60, requestedAt: new Date().toISOString() });

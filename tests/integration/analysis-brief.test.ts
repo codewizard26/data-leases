@@ -1,0 +1,27 @@
+import {test,expect} from 'vitest';
+import {randomUUID} from 'node:crypto';
+import {AnswerEnvelopeSchema,FixedBundleQuoteSchema,ANALYSIS_REQUIREMENTS,type AnalysisPersona,type AnswerEnvelope} from '@data-leases/contracts';
+import {generateAnalysisBrief,sourceDigest} from '../../packages/agents/src/analysis-brief.js';
+import {startProvider,PaymentJournal,bundleTermsHash} from '../../packages/agents/src/index.js';
+import type {ComputeAdapter,ComputeInput} from '../../packages/agents/src/compute.js';
+const liquidity='AAVE_V3_USDC_AVAILABLE_LIQUIDITY',utilization='AAVE_V3_USDC_RESERVE_UTILIZATION',supply='AAVE_V3_USDC_SUPPLY_APY',borrow='AAVE_V3_USDC_VARIABLE_BORROW_APY';
+function answers():AnswerEnvelope[]{const runId=randomUUID(),quoteId=randomUUID();return [liquidity,utilization,supply,borrow].map((id,index)=>AnswerEnvelopeSchema.parse({schemaVersion:'1.0.0',runId,sessionId:runId,negotiationId:quoteId,acceptedQuoteId:quoteId,providerId:'provider-a',questionTemplateId:id,deliveredAt:new Date().toISOString(),chainId:'eip155:1',metric:id,value:['425382037286831','8100','321','485'][index],unit:index===0?'USDC_RAW_6_DECIMALS':'BASIS_POINTS',methodologyVersion:'test-only',sourceBlockNumber:'100',sourceBlockHash:'0x'+'1'.repeat(64),evidenceRefs:['test:fixture'],evidencePolicyId:'test-policy',demoTrustMode:'UNTRUSTED_MOCK'}));}
+const narrative={headline:'A funding spread requires execution-cost checks',summary:'Borrowing and supply rates differ in the current snapshot; the reserve alone cannot establish profitable carry.',findings:[{text:'Available reserve liquidity is a funding input, not a guarantee of executable trade depth.',evidenceIds:[liquidity]},{text:'The borrow and supply observations support comparing funding costs before considering any carry strategy.',evidenceIds:[borrow,supply]}],watchpoints:[{text:'Utilization is a snapshot and does not establish a worsening trend.',evidenceIds:[utilization]}],nextChecks:['Obtain venue depth, execution fees and hedging costs before assessing a trading strategy.']};
+test('analysis uses supplied evidence and exact spread arithmetic, with no invented numeric claims',async()=>{let input:ComputeInput|undefined;const brief=await generateAnalysisBrief({generate:async value=>{input=value;return {provider:'CLAUDE',model:'test-injected',text:JSON.stringify(narrative)};}},'MARKET_MAKER',answers());expect(brief.derived[0]).toMatchObject({value:'1.64',unit:'percentage points'});expect(brief.status).toBe('AI_INTERPRETATION_NOT_INDEPENDENTLY_VERIFIED');expect(input?.messages[1]?.content).toContain('425382037.286831');expect(input?.jsonSchema).toBeDefined();});
+test('analysis rejects missing evidence, invented references, numeric model claims and mock inference',async()=>{
+ const compute=(data:unknown,provider:'CLAUDE'|'MOCK'='CLAUDE'):ComputeAdapter=>({generate:async()=>({provider,model:'test-injected',text:JSON.stringify(data)})});
+ await expect(generateAnalysisBrief(compute(narrative),'MARKET_MAKER',answers().slice(0,2))).rejects.toThrow('ANALYSIS_INPUTS_INCOMPLETE');
+ await expect(generateAnalysisBrief(compute({...narrative,findings:[{text:'An invented trend',evidenceIds:['NOT_SUPPLIED']},narrative.findings[1]]}),'MARKET_MAKER',answers())).rejects.toThrow('ANALYSIS_UNKNOWN_EVIDENCE');
+ await expect(generateAnalysisBrief(compute({...narrative,summary:'Guaranteed 20% return'}),'MARKET_MAKER',answers())).rejects.toThrow();
+ await expect(generateAnalysisBrief(compute(narrative,'MOCK'),'MARKET_MAKER',answers())).rejects.toThrow('REAL_ANALYSIS_MODEL_REQUIRED');
+});
+test('fixed analysis quote charges one disclosed fee, binds persona, and does not run inference until preparation',async()=>{
+ const journal=new PaymentJournal(':memory:');let calls=0,reads=0;const provider=await startProvider({port:0,providerId:'provider-a',askMinor:'500',floorMinor:'300',analysisPriceMinor:'1000',sourceTemplates:[...ANALYSIS_REQUIREMENTS.MARKET_MAKER],answerSource:async base=>{reads++;const match=answers().find(a=>a.questionTemplateId===base.questionTemplateId)!;return {value:match.value,sourceBlockNumber:match.sourceBlockNumber!,sourceBlockHash:match.sourceBlockHash!,evidenceRefs:match.evidenceRefs};},payment:{payTo:'0.0.123',journal},compute:{generate:async()=>{calls++;return {provider:'CLAUDE',model:'test-injected',text:JSON.stringify(narrative)};}}});
+ const post=(path:string,body:unknown)=>fetch(provider.baseUrl+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ try{const runId=randomUUID(),quote=FixedBundleQuoteSchema.parse((await(await post('/fixed-quotes',{runId,measurementIds:ANALYSIS_REQUIREMENTS.MARKET_MAKER,analysisPersona:'MARKET_MAKER' satisfies AnalysisPersona,maxAgeSeconds:300})).json()).quote);
+ expect(quote.priceMinor).toBe('3000');expect(quote.analysis).toEqual({persona:'MARKET_MAKER',priceMinor:'1000'});expect(calls).toBe(0);expect(reads).toBe(0);
+ const changed={...quote,analysis:{...quote.analysis!,persona:'TRADER' as const}};expect(bundleTermsHash(changed)).not.toBe(quote.termsHash);expect((await post('/fixed-quotes/prepare',changed)).status).toBe(409);expect(calls).toBe(0);
+ expect((await post('/fixed-quotes/prepare',quote)).status).toBe(200);const record=journal.get('seller:'+runId)!;expect(calls).toBe(1);expect(record.analysisBrief?.sourceDigest).toBe(sourceDigest(record.answers!));expect(record.status).toBe('READY');
+ expect((await post('/fixed-quotes/prepare',quote)).status).toBe(200);expect(calls).toBe(1);
+ }finally{await provider.close();journal.close();}
+});

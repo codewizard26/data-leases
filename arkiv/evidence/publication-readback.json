@@ -1,0 +1,96 @@
+{
+  "observedAt": "2026-11-06T22:15:08.797Z",
+  "network": "Rabdi",
+  "chainId": 7794095,
+  "publisher": "0xfAD2ebea1Ee7AB11ECCB803f1372e288705638c0",
+  "entities": [
+    {
+      "entityKey": "0x76cff9bb6d804e755cce7ba1faa962b3ffd52e4d24e7716b51d51d3e58dbd214",
+      "transactionHash": "0x36a6846f5c34540a31bca9d076cacc94d1c01383ac160cb11bdd767119a1f964",
+      "entityType": "ProviderOffer",
+      "status": "ACTIVE",
+      "providerId": "provider-a",
+      "answerValuePublished": false
+    },
+    {
+      "entityKey": "0x7e41fae37be9ea7ff759da776c3cc4cf7b955faf9933ce7c58f5839997055372",
+      "transactionHash": "0x0f621153ba9eb04d674fa6654e49e9fd5e07e6c8cb3229439d073a0f2a231679",
+      "entityType": "ProviderOffer",
+      "status": "ACTIVE",
+      "providerId": "provider-b",
+      "answerValuePublished": false
+    },
+    {
+      "entityKey": "0x3d5f4a6ccc50cef829b71e5d92cde27ea4f605465d08aad97721efde1802485b",
+      "transactionHash": "0xb6e502f63d8e2b154dcbddcdff74e0d7af8ba4c4c180c1833b361b0850ef197e",
+      "entityType": "VerificationRecord",
+      "status": "ACCEPTED",
+      "providerId": "cre-demo-provider",
+      "runId": "695a21b9-4609-4d3d-a921-91cb273f0aab",
+      "verificationId": "c718d958-a212-4b94-ac66-4815651e61c4",
+      "executionMode": "CRE_CLI_SIMULATION",
+      "answerValuePublished": false
+    },
+    {
+      "entityKey": "0xa8c3923a58f092148a5bf7e9d63724c2d88afe21c263993f19110515df7dc809",
+      "transactionHash": "0x0723ab3212a7d8b4c1db085093a8ebb08e29d5c83ec570448f9cc16922605c36",
+      "entityType": "AnswerReceipt",
+      "status": "ACCEPTED",
+      "providerId": "cre-demo-provider",
+      "runId": "695a21b9-4609-4d3d-a921-91cb273f0aab",
+      "verificationId": "c718d958-a212-4b94-ac66-4815651e61c4",
+      "executionMode": "CRE_CLI_SIMULATION",
+      "answerValuePublished": false
+    },
+    {
+      "entityKey": "0xca9dd6563dc6c7b9b6395df9ed5809c8c812b125b3aadda4bfda2c5166660f49",
+      "transactionHash": "0x53b5473071e358389b78d0c2ae6f58ce56895027a6f36342966bf9ad71e12be0",
+      "entityType": "VerificationRecord",
+      "status": "REJECTED",
+      "providerId": "cre-demo-provider",
+      "runId": "4310502c-972a-4312-a276-32482b27f4b0",
+      "verificationId": "d2d81293-b883-4fdc-826f-ea62488a81b9",
+      "executionMode": "CRE_CLI_SIMULATION",
+      "answerValuePublished": false
+    },
+    {
+      "entityKey": "0xdf30d0cbf2191c25b19e0573125eadf3d5c4984314ac249b46aa4ca6815e76d0",
+      "transactionHash": "0xecbe0359a99bd0f020019160683c5ec9ba97fbe9143b980933047cdaea7943f7",
+      "entityType": "AnswerReceipt",
+      "status": "REJECTED",
+      "providerId": "cre-demo-provider",
+      "runId": "4310502c-972a-4312-a276-32482b27f4b0",
+      "verificationId": "d2d81293-b883-4fdc-826f-ea62488a81b9",
+      "executionMode": "CRE_CLI_SIMULATION",
+      "answerValuePublished": false
+    },
+    {
+      "entityKey": "0x3f16b8e26bc18b78053af3cd5a83fefef2f5daa4aca478cbf1667b30aa76d6b6",
+      "transactionHash": "0x7c3881617ed727d0d044388761eb8d9dc5bc5378efa8f70c7ef94169e4bd9894",
+      "entityType": "VerificationRecord",
+      "status": "INCONCLUSIVE",
+      "providerId": "cre-demo-provider",
+      "runId": "4310502c-972a-4312-a276-32482b27f4b0",
+      "verificationId": "3fa0972c-f5a8-4b83-8803-3be380e01fd6",
+      "executionMode": "CRE_CLI_SIMULATION",
+      "answerValuePublished": false
+    },
+    {
+      "entityKey": "0x5e637f9bbd3e91527fc9dd57229faa91f833d70dfb2881ea1db58e951f2612e5",
+      "transactionHash": "0x35f8d277c76a14dcd017a617e5160ecf89c4ada58eacefe45ee4dd2850548238",
+      "entityType": "AnswerReceipt",
+      "status": "INCONCLUSIVE",
+      "providerId": "cre-demo-provider",
+      "runId": "4310502c-972a-4312-a276-32482b27f4b0",
+      "verificationId": "3fa0972c-f5a8-4b83-8803-3be380e01fd6",
+      "executionMode": "CRE_CLI_SIMULATION",
+      "answerValuePublished": false
+    }
+  ],
+  "latestAcceptedAnswerEntity": "0xa8c3923a58f092148a5bf7e9d63724c2d88afe21c263993f19110515df7dc809",
+  "latestQueryObservedAfter": [
+    "REJECTED",
+    "INCONCLUSIVE"
+  ],
+  "hederaPaymentExecuted": false
+}

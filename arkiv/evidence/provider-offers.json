@@ -1,0 +1,27 @@
+{
+  "observedAt": "2026-11-06T22:07:13.926Z",
+  "publisher": "0xfAD2ebea1Ee7AB11ECCB803f1372e288705638c0",
+  "network": "Rabdi",
+  "entities": [
+    {
+      "kind": "ProviderOffer",
+      "entityKey": "0x76cff9bb6d804e755cce7ba1faa962b3ffd52e4d24e7716b51d51d3e58dbd214",
+      "transactionHash": "0x36a6846f5c34540a31bca9d076cacc94d1c01383ac160cb11bdd767119a1f964"
+    },
+    {
+      "kind": "ProviderOffer",
+      "entityKey": "0x7e41fae37be9ea7ff759da776c3cc4cf7b955faf9933ce7c58f5839997055372",
+      "transactionHash": "0x0f621153ba9eb04d674fa6654e49e9fd5e07e6c8cb3229439d073a0f2a231679"
+    }
+  ],
+  "readback": [
+    {
+      "entityKey": "0x76cff9bb6d804e755cce7ba1faa962b3ffd52e4d24e7716b51d51d3e58dbd214",
+      "providerId": "provider-a"
+    },
+    {
+      "entityKey": "0x7e41fae37be9ea7ff759da776c3cc4cf7b955faf9933ce7c58f5839997055372",
+      "providerId": "provider-b"
+    }
+  ]
+}
