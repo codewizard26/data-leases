@@ -1,8 +1,8 @@
 import {publicAnalytics} from './public-analytics.js';
 import {BuyerHttp,BuyerHttpError} from './buyer-http.js';
 import {BuyerStore} from './buyer-store.js';
-import {WorldAuth,worldAuthConfigFromEnv} from './world-auth.js';
-import {WorldSessionStore} from './world-session-store.js';
+import {BuyerAuth,devLoginFromEnv,privyConfigFromEnv,privyVerifier,secureCookiesFromEnv} from './buyer-auth.js';
+import {BuyerSessionStore} from './buyer-session-store.js';
 import {AnalysisPersonaSchema,ANALYSIS_REQUIREMENTS,MeasurementIdsSchema} from '@data-leases/contracts';
 import {registryOffers,syncRegistryOffers,registryServiceHistory,type MarketplaceQueries} from './arkiv-marketplace.js';
 import {providerOffers} from './provider-directory.js';
@@ -31,7 +31,7 @@ import { PaymentJournal, payHederaAnswer,reconcileHederaPayment, HEDERA_CURRENCY
 export interface GatewayOptions {
   port?: number;
   buyerAuthEnabled?:boolean;
-  worldAuth?:WorldAuth;
+  buyerAuth?:BuyerAuth;
   liveOnly?:boolean;
   negotiationStrategy?:AiNegotiationStrategy;
   dataDirectory?:string;
@@ -106,10 +106,11 @@ export async function startGateway(options: GatewayOptions = {}) {
   buyerJournal=new PaymentJournal(resolve(directory,'buyer.sqlite'));
   const eventStore=new EventStore({directory:resolve(directory,'events')});
   const leaseStore=new LeaseStore(resolve(directory,'leases.sqlite'));
-  const worldSessions=options.worldAuth?undefined:new WorldSessionStore(resolve(directory,'world-auth.sqlite'));
-  const worldAuth=options.worldAuth??new WorldAuth(worldSessions!,worldAuthConfigFromEnv());
+  const buyerSessions=options.buyerAuth?undefined:new BuyerSessionStore(resolve(directory,'buyer-auth.sqlite'));
+  const privyConfig=privyConfigFromEnv();
+  const buyerAuth=options.buyerAuth??new BuyerAuth(buyerSessions!,privyConfig?privyVerifier(privyConfig):undefined,{secureCookies:secureCookiesFromEnv(),devLogin:devLoginFromEnv()});
   const buyers=new BuyerStore(leaseStore);
-  const buyerHttp=new BuyerHttp(worldAuth,buyers,options.buyerAuthEnabled??(process.env.WORLD_AUTH_ENABLED==='true'||Boolean(worldAuth.config)),()=>getPaymentSetup().maxTinybars,(leaseId,status)=>scheduleEvent(leaseId,status,{}));
+  const buyerHttp=new BuyerHttp(buyerAuth,buyers,options.buyerAuthEnabled??(process.env.BUYER_AUTH_ENABLED==='true'||buyerAuth.configured),()=>getPaymentSetup().maxTinybars,(leaseId,status)=>scheduleEvent(leaseId,status,{}));
   const verificationClient=options.verificationClient??new RunVerificationClient();
   const market=new MarketFeed(eventStore,providers);
   const observationJobs=new Map<string,string>();
@@ -356,5 +357,5 @@ export async function startGateway(options: GatewayOptions = {}) {
   await new Promise<void>((resolve, reject) => { server.once('error',reject);server.listen(options.port ?? 3000,'127.0.0.1',resolve); });
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   scheduler.start();
-  return {baseUrl, close: () => new Promise<void>((resolve, reject) => {server.close(error => {void market.close().then(()=>scheduler.close()).then(()=>orchestrator.drain()).then(()=>verificationClient instanceof RunVerificationClient?verificationClient.close():undefined).then(()=>eventStore.close()).then(()=>{worldSessions?.close();leaseStore.close();buyerJournal?.close();if(error)reject(error);else resolve();},reject);});server.closeAllConnections();})};
+  return {baseUrl, close: () => new Promise<void>((resolve, reject) => {server.close(error => {void market.close().then(()=>scheduler.close()).then(()=>orchestrator.drain()).then(()=>verificationClient instanceof RunVerificationClient?verificationClient.close():undefined).then(()=>eventStore.close()).then(()=>{buyerSessions?.close();leaseStore.close();buyerJournal?.close();if(error)reject(error);else resolve();},reject);});server.closeAllConnections();})};
 }

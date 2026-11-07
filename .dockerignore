@@ -1,0 +1,15 @@
+**/node_modules
+**/.next
+**/.DS_Store
+.git
+.vercel
+.agents
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+data/
+*.parquet
+*.sqlite*
+workflows/cre/**/secrets.json

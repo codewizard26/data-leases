@@ -7,6 +7,10 @@ export const PROVIDER_PROFILES=[
  {providerId:'provider-d',name:'Quill',tagline:'Flexible rates for yield and reserve queries.',style:'FLEXIBLE',port:4104,askMinor:'650',floorMinor:'350'},
  {providerId:'provider-e',name:'Beacon',tagline:'Firm offers with a separately configured model.',style:'FIRM',port:4105,askMinor:'1100',floorMinor:'700'},
  {providerId:'provider-f',name:'Meridian',tagline:'Task-specific rates for model computation.',style:'BALANCED',port:4106,askMinor:'800',floorMinor:'450'},
+ {providerId:'provider-g',name:'Harbor',tagline:'Flexible rates for liquidity snapshots.',style:'FLEXIBLE',port:4107,askMinor:'600',floorMinor:'350'},
+ {providerId:'provider-h',name:'Ember',tagline:'Balanced pricing across reserve and yield reads.',style:'BALANCED',port:4108,askMinor:'750',floorMinor:'450'},
+ {providerId:'provider-i',name:'Vertex',tagline:'Firm premium offers for model-backed analysis.',style:'FIRM',port:4109,askMinor:'1000',floorMinor:'700'},
+ {providerId:'provider-j',name:'Nova',tagline:'Low-margin offers that concede quickly.',style:'FLEXIBLE',port:4110,askMinor:'550',floorMinor:'320'},
 ] as const;
 export type SellerStyle=typeof PROVIDER_PROFILES[number]['style'];
 export function providerPrefix(providerId:string){if(!/^provider-[a-z]$/.test(providerId))throw new Error('INVALID_PROVIDER_ID');return providerId.replace('-','_').toUpperCase();}
@@ -31,6 +35,10 @@ export function providerRates(providerId:string,environment:Record<string,string
   'provider-d':{AAVE_V3_USDC_SUPPLY_APY:['550','350'],AI_LINK_EXPLANATION:['1200','700']},
   'provider-e':{AAVE_V3_USDC_SUPPLY_APY:['1000','700'],AI_LINK_EXPLANATION:['2200','1400']},
   'provider-f':{AAVE_V3_USDC_SUPPLY_APY:['650','400'],AI_LINK_EXPLANATION:['900','550']},
+  'provider-g':{AAVE_V3_USDC_SUPPLY_APY:['700','450'],AI_LINK_EXPLANATION:['1300','800']},
+  'provider-h':{AAVE_V3_USDC_SUPPLY_APY:['900','550'],AI_LINK_EXPLANATION:['1100','700']},
+  'provider-i':{AAVE_V3_USDC_SUPPLY_APY:['1200','800'],AI_LINK_EXPLANATION:['2000','1300']},
+  'provider-j':{AAVE_V3_USDC_SUPPLY_APY:['750','450'],AI_LINK_EXPLANATION:['1500','900']},
  };
  return Object.fromEntries(Object.entries(tariffs[providerId]??{}).map(([id,[askMinor,floorMinor]])=>[id,{askMinor,floorMinor}]));
 }

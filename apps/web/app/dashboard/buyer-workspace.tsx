@@ -1,67 +1,128 @@
 'use client';
 
-import {useEffect, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
+import {usePrivy} from '@privy-io/react-auth';
 import {hbar} from './public-dashboard';
+import {PRIVY_APP_ID} from '../providers';
 import type {BuyerApproval, BuyerLeasePolicy} from '@data-leases/contracts';
 
 export type BuyerRun = {runId: string; sessionId: string; leaseId?: string; status: string; paymentStatus: string; deliveryStatus: string; verificationStatus: string; publicationStatus: string};
 
 type BuyerSession = {
  authenticated: boolean;
- buyer?: {buyerId: string};
+ buyer?: {buyerId: string; provider?: 'PRIVY' | 'LOCAL_DEV'};
  csrfToken?: string;
- world: {configured: boolean; environment: string; notice?: string};
+ auth: {provider: 'PRIVY'; configured: boolean; enabled: boolean; devLogin?: boolean; notice?: string};
 };
+/** Returns a bearer token for approvals, or undefined when the session needs none (local test buyer). */
+type ApprovalToken = () => Promise<string | undefined>;
+type PrivyState = {ready: boolean; authenticated: boolean; user: ReturnType<typeof usePrivy>['user']; login: () => void; logout: () => Promise<void>; getAccessToken: () => Promise<string | null>};
 
-async function request<T>(path: string, options?: {body: unknown; csrfToken?: string}, signal?: AbortSignal): Promise<T> {
+async function request<T>(path: string, options?: {body: unknown; csrfToken?: string; bearer?: string}, signal?: AbortSignal): Promise<T> {
  const response = await fetch('/api/' + path, {
   cache: 'no-store', credentials: 'same-origin', signal,
-  ...(options ? {method: 'POST', headers: {'Content-Type': 'application/json', ...(options.csrfToken ? {'x-csrf-token': options.csrfToken} : {})}, body: JSON.stringify(options.body)} : {}),
+  ...(options ? {method: 'POST', headers: {'Content-Type': 'application/json', ...(options.csrfToken ? {'x-csrf-token': options.csrfToken} : {}), ...(options.bearer ? {Authorization: 'Bearer ' + options.bearer} : {})}, body: JSON.stringify(options.body)} : {}),
  });
  const data = await response.json();
  if (!response.ok) throw new Error(data.error ?? 'Request failed');
  return data as T;
 }
 
-export default function BuyerWorkspace({initialApproval, onRun}: {initialApproval?: BuyerApproval; onRun?: (run: BuyerRun) => void}) {
+function shortAddress(value: string) {return value.length > 12 ? value.slice(0, 6) + '…' + value.slice(-4) : value;}
+
+export default function BuyerWorkspace(props: {initialApproval?: BuyerApproval; onRun?: (run: BuyerRun) => void}) {
+ // NEXT_PUBLIC_PRIVY_APP_ID is inlined at build time, so this branch never changes between renders.
+ return PRIVY_APP_ID ? <PrivyBuyerWorkspace {...props} /> : <Workspace {...props} />;
+}
+
+function PrivyBuyerWorkspace(props: {initialApproval?: BuyerApproval; onRun?: (run: BuyerRun) => void}) {
+ const {ready, authenticated, user, login, logout, getAccessToken} = usePrivy();
+ return <Workspace {...props} privy={{ready, authenticated, user, login: () => login(), logout, getAccessToken}} />;
+}
+
+function SignedOutState() {
+ return <div className="empty-state compact"><h3>Sign in to see your leases and spending</h3><p>Only you can access your private records and approve increased spending authority.</p></div>;
+}
+
+function Workspace({initialApproval, onRun, privy}: {initialApproval?: BuyerApproval; onRun?: (run: BuyerRun) => void; privy?: PrivyState}) {
  const [session, setSession] = useState<BuyerSession>();
  const [error, setError] = useState('');
+ const [notice, setNotice] = useState('');
  const [busy, setBusy] = useState(false);
+ const syncing = useRef(false);
+ const loadSession = useCallback(async (signal?: AbortSignal) => setSession(await request<BuyerSession>('auth/session', undefined, signal)), []);
  useEffect(() => {
   const controller = new AbortController();
-  void request<BuyerSession>('auth/session', undefined, controller.signal).then(setSession).catch((cause: unknown) => {
-   if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Session unavailable');
-  });
+  loadSession(controller.signal).catch((cause: unknown) => {if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Session unavailable');});
   return () => controller.abort();
- }, []);
- async function signIn() {
-  setBusy(true); setError('');
+ }, [loadSession]);
+ const devSession = session?.buyer?.provider === 'LOCAL_DEV';
+ const privyReady = privy?.ready ?? false, privyAuthenticated = privy?.authenticated ?? false, getPrivyToken = privy?.getAccessToken;
+ // Keep the private gateway session in step with Privy: exchange a verified Privy token for an
+ // HttpOnly application session, and end a Privy-backed session when the Privy login ends.
+ useEffect(() => {
+  if (!getPrivyToken || !privyReady || !session || syncing.current || !session.auth.enabled) return;
+  if (privyAuthenticated && !session.authenticated) {
+   syncing.current = true;
+   void (async () => {
+    try {
+     const token = await getPrivyToken();
+     if (!token) throw new Error('PRIVY_TOKEN_REQUIRED');
+     await request('auth/privy', {body: {}, bearer: token});
+     await loadSession();
+    } catch (cause) {setError(cause instanceof Error ? cause.message : 'Sign-in failed');}
+    finally {syncing.current = false;}
+   })();
+  } else if (!privyAuthenticated && session.authenticated && !devSession) {
+   syncing.current = true;
+   void request('auth/logout', {body: {}, csrfToken: session.csrfToken}).catch(() => undefined).then(() => loadSession()).finally(() => {syncing.current = false;});
+  }
+ }, [privyReady, privyAuthenticated, session, devSession, getPrivyToken, loadSession]);
+ async function devLogin() {
+  setBusy(true); setError(''); setNotice('');
   try {
-   const result = await request<{authorizationUrl: string}>('auth/world/start', {body: {returnTo: '/dashboard'}, csrfToken: session?.csrfToken});
-   const destination = new URL(result.authorizationUrl, window.location.origin);
-   if (destination.protocol !== 'https:' && destination.origin !== window.location.origin) throw new Error('Unsafe authentication destination');
-   window.location.assign(destination.href);
-  } catch (cause) {setError(cause instanceof Error ? cause.message : 'Sign-in unavailable'); setBusy(false);}
+   const result = await request<{adoptedLeases?: number}>('auth/dev', {body: {name: 'local-buyer'}});
+   if (result.adoptedLeases) setNotice(result.adoptedLeases + ' earlier lease' + (result.adoptedLeases === 1 ? '' : 's') + ' and their results were added to this local test account.');
+   await loadSession();
+  } catch (cause) {setError(cause instanceof Error ? cause.message : 'Local login failed');}
+  finally {setBusy(false);}
  }
- async function logout() {
-  setBusy(true); setError('');
+ async function signOut() {
+  setBusy(true); setError(''); setNotice('');
   try {
-   await request('auth/logout', {body: {}, csrfToken: session?.csrfToken});
-   setSession(undefined);
-   window.location.reload();
+   if (session?.authenticated) await request('auth/logout', {body: {}, csrfToken: session.csrfToken});
+   if (privy?.authenticated) await privy.logout();
+   await loadSession();
   } catch (cause) {setError(cause instanceof Error ? cause.message : 'Sign-out failed');}
   finally {setBusy(false);}
  }
+ const signedIn = Boolean(session?.authenticated && (devSession || privyAuthenticated));
+ const user = privy?.user;
+ const identity = devSession ? 'local test buyer' : user ? (user.email?.address ?? user.google?.email ?? (user.wallet?.address ? shortAddress(user.wallet.address) : 'your Privy account')) : undefined;
+ const approvalToken: ApprovalToken = async () => {
+  if (devSession) return undefined;
+  const token = await privy?.getAccessToken();
+  if (!token) throw new Error('Sign in again to approve.');
+  return token;
+ };
+ const action = signedIn || privyAuthenticated
+  ? <button disabled={busy} onClick={() => void signOut()}>Sign out</button>
+  : <div className="panel-actions">
+   {privy ? <button className="primary" disabled={!privy.ready || busy || !session?.auth.configured} onClick={() => privy.login()}>{privy.ready ? 'Sign in' : 'Loading…'}</button> : null}
+   {session?.auth.devLogin ? <button disabled={busy} onClick={() => void devLogin()}>Use local test login</button> : null}
+  </div>;
  return <section className="single-workspace" aria-labelledby="buyer-workspace-title">
-  <div className="workspace-heading"><div><p className="section-context">Your private buyer workspace</p><h2 id="buyer-workspace-title">Your agent. Your authority.</h2></div><span className="status-pill neutral">{session?.authenticated ? 'Signed in' : 'Sign-in required'}</span></div>
+  <div className="workspace-heading"><div><p className="section-context">{signedIn && identity ? 'Signed in as ' + identity : 'Your private buyer workspace'}</p><h2 id="buyer-workspace-title">{signedIn ? 'Welcome back.' : 'Your agent. Your authority.'}</h2></div><span className="status-pill neutral">{signedIn ? (devSession ? 'Local test login' : 'Signed in') : 'Sign-in required'}</span></div>
   <div className="workspace-content">
-   <div className="panel-title"><div><h3>World Agent Pass</h3><p>Approve bounded spending. Routine runs stay within the policy you authorize.</p></div>{session?.authenticated ? <button disabled={busy} onClick={() => void logout()}>Sign out</button> : <button className="primary" disabled={busy || !session?.world.configured} onClick={() => void signIn()}>{busy ? 'Opening World…' : 'Sign in with World'}</button>}</div>
-   {session ? <p className="hint">{session.world.environment}{session.world.notice ? ' · ' + session.world.notice : ''}</p> : <p className="hint">Checking application session…</p>}
-   {session && !session.world.configured ? <p className="inline-warning">World Agent Pass is not configured. Sign-in and spending approvals remain unavailable.</p> : null}
-   <p className="hint">Human verification does not fund your wallet or verify a provider’s answer. Signing out ends browser access; pause or cancel a lease to stop future runs.</p>
+   <div className="panel-title"><div><h3>Your account</h3><p>Your mandates, spending and purchases in one place. Routine runs stay within the policy you authorize.</p></div>{action}</div>
+   {!privy ? <p className="inline-warning">Privy is not configured in this web build (NEXT_PUBLIC_PRIVY_APP_ID).</p> : null}
+   {session && privy && !session.auth.configured ? <p className="inline-warning">The gateway has no Privy server credentials. Privy sign-in and approvals remain unavailable.</p> : null}
+   {devSession ? <p className="inline-warning">Local test login: development only, no external identity. Disabled in production.</p> : null}
+   {signedIn && !devSession && user?.wallet?.address ? <p className="hint">Wallet {shortAddress(user.wallet.address)}. Signing in does not fund this wallet or verify a provider’s answer.</p> : <p className="hint">Signing in does not fund your wallet or verify a provider’s answer. Signing out ends browser access; pause or cancel a lease to stop future runs.</p>}
+   {privyAuthenticated && !session?.authenticated && !error ? <p role="status">Connecting your account…</p> : null}
+   {notice ? <p role="status">{notice}</p> : null}
    {error ? <p className="inline-warning" role="alert">{error}</p> : null}
-   {session?.authenticated ? <PrivateOverview/> : null}
-   {session?.authenticated ? <BuyerLeases csrfToken={session.csrfToken} worldConfigured={session.world.configured} initialApproval={initialApproval} onRun={onRun} /> : <div className="empty-state compact"><h3>Sign in to see your leases and spending</h3><p>Only your authenticated buyer can access your private records and approve increased authority.</p></div>}
+   {signedIn ? <><PrivateOverview/><BuyerLeases csrfToken={session?.csrfToken} approvalToken={approvalToken} initialApproval={initialApproval} onRun={onRun} /></> : <SignedOutState />}
   </div>
  </section>;
 }
@@ -77,7 +138,7 @@ type OwnedLease = {
  approval?: BuyerApproval;
 };
 
-function BuyerLeases({csrfToken, worldConfigured, initialApproval, onRun}: {csrfToken?: string; worldConfigured: boolean; initialApproval?: BuyerApproval; onRun?: (run: BuyerRun) => void}) {
+function BuyerLeases({csrfToken, approvalToken, initialApproval, onRun}: {csrfToken?: string; approvalToken: ApprovalToken; initialApproval?: BuyerApproval; onRun?: (run: BuyerRun) => void}) {
  const [leases, setLeases] = useState<OwnedLease[]>([]);
  const [approvals, setApprovals] = useState<BuyerApproval[]>([]);
  const [loading, setLoading] = useState(true);
@@ -140,11 +201,10 @@ function BuyerLeases({csrfToken, worldConfigured, initialApproval, onRun}: {csrf
   setApproval({...approval, status: 'DENIED'}); await refresh();
  }
  async function approve() {
-  if (!approval || !reviewed || !worldConfigured) return;
-  const result = await request<{authorizationUrl: string}>('approvals/' + approval.approvalId + '/start', {body: {policyHash: approval.policyHash}, csrfToken});
-  const destination = new URL(result.authorizationUrl, window.location.origin);
-  if (destination.protocol !== 'https:' && destination.origin !== window.location.origin) throw new Error('Unsafe authentication destination');
-  window.location.assign(destination.href);
+  if (!approval || !reviewed) return;
+  const token = await approvalToken();
+  const result = await request<{approval: BuyerApproval}>('approvals/' + approval.approvalId + '/approve', {body: {policyHash: approval.policyHash}, csrfToken, bearer: token});
+  setApproval(result.approval); setReviewed(false); await refresh();
  }
  const reducing = Boolean(editing && editing.revision > 0 && /^[1-9][0-9]{0,18}$/.test(perRequest) && /^[1-9][0-9]{0,18}$/.test(total) && BigInt(perRequest) <= BigInt(editing.policy.perRequestTinybars) && BigInt(total) <= BigInt(editing.policy.totalTinybars) && Date.parse(expiry) <= Date.parse(editing.policy.expiresAt));
  const approvalExpired = approval ? Date.parse(approval.expiresAt) <= Date.now() : false;
@@ -162,8 +222,8 @@ function BuyerLeases({csrfToken, worldConfigured, initialApproval, onRun}: {csrf
    <div className="fields"><label>Proposed per-request cap (tinybars)<input inputMode="numeric" value={perRequest} disabled={busy || Boolean(approval)} onChange={event => setPerRequest(event.target.value)} /></label><label>Proposed total cap (tinybars)<input inputMode="numeric" value={total} disabled={busy || Boolean(approval)} onChange={event => setTotal(event.target.value)} /></label><label>Proposed expiry (ISO UTC)<input value={expiry} disabled={busy || Boolean(approval)} onChange={event => setExpiry(event.target.value)} /></label></div>
    <dl><dt>Currency</dt><dd>{editing.policy.currency}</dd><dt>Allowed providers</dt><dd>{editing.policy.providerIds.join(', ')}</dd><dt>Maximum total exposure</dt><dd>{approval?.purpose === 'ACTIVATE_LEASE' ? 'No active policy' : editing.policy.totalTinybars + ' current'} · {approval?.proposedPolicy.totalTinybars ?? total} proposed tinybars</dd><dt>Per-request exposure</dt><dd>{approval?.purpose === 'ACTIVATE_LEASE' ? 'No active policy' : editing.policy.perRequestTinybars + ' current'} · {approval?.proposedPolicy.perRequestTinybars ?? perRequest} proposed tinybars</dd><dt>Expiry</dt><dd>{approval?.purpose === 'ACTIVATE_LEASE' ? 'No active policy' : editing.policy.expiresAt + ' current'} · {approval?.proposedPolicy.expiresAt ?? expiry} proposed</dd></dl>
    <details><summary>Complete proposed policy</summary><pre>{JSON.stringify(approval?.proposedPolicy ?? {...editing.policy,perRequestTinybars:perRequest,totalTinybars:total,expiresAt:expiry}, null, 2)}</pre></details>
-   {!approval ? <button disabled={busy || !csrfToken} onClick={() => void mutate(propose)}>{reducing ? 'Apply reduced limits' : 'Create budget request'}</button> : <><p role="status">Approval {approvalExpired && approval.status === 'PENDING' ? 'EXPIRED' : approval.status} · Expires {new Date(approval.expiresAt).toLocaleString()}</p><p className="hint">Policy hash <code style={{overflowWrap: 'anywhere'}}>{approval.policyHash}</code></p>{approval.status === 'PENDING' && !approvalExpired ? <><label><input type="checkbox" checked={reviewed} onChange={event => setReviewed(event.target.checked)} disabled={busy} /> I authorize this exact policy revision and maximum exposure.</label><div className="panel-actions"><button className="primary" disabled={busy || !reviewed || !worldConfigured} onClick={() => void mutate(approve)}>Verify with World and approve</button><button disabled={busy} onClick={() => void mutate(deny)}>Deny request</button></div></> : <p>Existing policy remains unchanged unless the backend completed this approval.</p>}</>}
-   <p className="hint">Reduced limits apply without fresh World verification. They must still cover committed payments. An increased budget does not add funds, reset spending, or release reserved payments.</p>
+   {!approval ? <button disabled={busy || !csrfToken} onClick={() => void mutate(propose)}>{reducing ? 'Apply reduced limits' : 'Create budget request'}</button> : <><p role="status">Approval {approvalExpired && approval.status === 'PENDING' ? 'EXPIRED' : approval.status} · Expires {new Date(approval.expiresAt).toLocaleString()}</p><p className="hint">Policy hash <code style={{overflowWrap: 'anywhere'}}>{approval.policyHash}</code></p>{approval.status === 'PENDING' && !approvalExpired ? <><label><input type="checkbox" checked={reviewed} onChange={event => setReviewed(event.target.checked)} disabled={busy} /> I authorize this exact policy revision and maximum exposure.</label><div className="panel-actions"><button className="primary" disabled={busy || !reviewed} onClick={() => void mutate(approve)}>Approve this policy</button><button disabled={busy} onClick={() => void mutate(deny)}>Deny request</button></div></> : <p>Existing policy remains unchanged unless the backend completed this approval.</p>}</>}
+   <p className="hint">Reduced limits apply without a new approval. They must still cover committed payments. An increased budget does not add funds, reset spending, or release reserved payments.</p>
   </section> : null}
  </section>;
 }
@@ -171,5 +231,5 @@ function BuyerLeases({csrfToken, worldConfigured, initialApproval, onRun}: {csrf
 function PrivateOverview(){
  const [data,setData]=useState<{settledTinybars:string;heldTinybars:string;settledPurchases:number;runs:BuyerRun[]}>(),[error,setError]=useState('');
  useEffect(()=>{const controller=new AbortController();void request<{settledTinybars:string;heldTinybars:string;settledPurchases:number;runs:BuyerRun[]}>('buyer/overview',undefined,controller.signal).then(setData).catch((cause:unknown)=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:'Private overview unavailable');});return()=>controller.abort();},[]);
- return <section aria-labelledby="private-overview-title" style={{marginTop:24}}><h3 id="private-overview-title">Your purchases</h3><p>Only your authenticated buyer can open these reports. Public spending analytics do not include your World identity.</p>{error?<p className="inline-warning" role="alert">{error}</p>:data?<><dl className="registry-stat-grid"><div><dt>Your confirmed spending · HBAR</dt><dd>{hbar(data.settledTinybars)}</dd></div><div><dt>Reserved or unresolved · HBAR</dt><dd>{hbar(data.heldTinybars)}</dd></div><div><dt>Your confirmed purchases</dt><dd>{data.settledPurchases}</dd></div></dl><a href="/dashboard/reports">View previous analysis reports</a></>:<p role="status">Reading your private purchases…</p>}</section>;
+ return <section aria-labelledby="private-overview-title" style={{marginTop:24}}><h3 id="private-overview-title">Your purchases</h3><p>Only your authenticated buyer can open these reports. Public spending analytics do not include your account identity.</p>{error?<p className="inline-warning" role="alert">{error}</p>:data?<><dl className="registry-stat-grid"><div><dt>Your confirmed spending · HBAR</dt><dd>{hbar(data.settledTinybars)}</dd></div><div><dt>Reserved or unresolved · HBAR</dt><dd>{hbar(data.heldTinybars)}</dd></div><div><dt>Your confirmed purchases</dt><dd>{data.settledPurchases}</dd></div></dl><a href="/dashboard/reports">View previous analysis reports</a></>:<p role="status">Reading your private purchases…</p>}</section>;
 }

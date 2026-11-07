@@ -21,7 +21,8 @@
     "cre:prepare:services": "tsx scripts/prepare-services.ts",
     "cre:simulate": "pnpm --filter @data-leases/cre-adapter cre:simulate",
     "dev:web": "pnpm --filter @data-leases/web dev",
-    "parquet:inspect": "tsx scripts/parquet-inspect.ts"
+    "parquet:inspect": "tsx scripts/parquet-inspect.ts",
+    "serve": "START_WEB=false node --env-file=.env --import tsx scripts/dev.ts"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",

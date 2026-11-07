@@ -6,16 +6,17 @@ import {randomUUID} from 'node:crypto';
 import {EventStore} from '@data-leases/event-store';
 import {LeaseStore,type LeasePolicy} from '../../apps/agent-gateway/src/lease-store.js';
 import {BuyerStore} from '../../apps/agent-gateway/src/buyer-store.js';
-import {WorldSessionStore} from '../../apps/agent-gateway/src/world-session-store.js';
-import {WorldAuth} from '../../apps/agent-gateway/src/world-auth.js';
+import {BuyerSessionStore} from '../../apps/agent-gateway/src/buyer-session-store.js';
+import {BuyerAuth} from '../../apps/agent-gateway/src/buyer-auth.js';
+import {fixtureVerifier} from '../fixtures/privy-verifier.js';
 import {startGateway} from '../../apps/agent-gateway/src/server.js';
-let directory:string;let close:(()=>Promise<void>)|undefined;let sessions:WorldSessionStore;
-beforeEach(async()=>{directory=await mkdtemp(join(tmpdir(),'buyer-gateway-'));sessions=new WorldSessionStore(':memory:');vi.stubEnv('HEDERA_MAX_PAYMENT_TINYBARS','5000');vi.stubEnv('PAYMENTS_ENABLED','false');});
+let directory:string;let close:(()=>Promise<void>)|undefined;let sessions:BuyerSessionStore;
+beforeEach(async()=>{directory=await mkdtemp(join(tmpdir(),'buyer-gateway-'));sessions=new BuyerSessionStore(':memory:');vi.stubEnv('HEDERA_MAX_PAYMENT_TINYBARS','5000');vi.stubEnv('PAYMENTS_ENABLED','false');});
 afterEach(async()=>{await close?.();close=undefined;sessions.close();vi.unstubAllEnvs();await rm(directory,{recursive:true,force:true});});
 const policy=():LeasePolicy=>({leaseId:randomUUID(),questionTemplateId:'ERC20_TOKEN_METADATA',currency:'hedera:testnet/HBAR',providerIds:['provider-a'],perRequestTinybars:'500',totalTinybars:'2000',expiresAt:new Date(Date.now()+3600000).toISOString(),maxAgeSeconds:60,maxRounds:3,paymentsAuthorized:true});
 // Sessions are created directly as a test fixture, never as a production authentication shortcut.
-function fixtureBuyer(subject:string){const session=sessions.createSession('https://sandbox.auth.world.org',subject,Math.floor(Date.now()/1000));return {...session,headers:{Cookie:'data_leases_buyer='+session.token,'X-CSRF-Token':session.csrfToken,'Content-Type':'application/json'}};}
-async function gateway(){const result=await startGateway({port:0,dataDirectory:directory,worldAuth:new WorldAuth(sessions),buyerAuthEnabled:true});close=result.close;return result.baseUrl;}
+function fixtureBuyer(subject:string){const session=sessions.createSession('privy.io','did:privy:'+subject,Math.floor(Date.now()/1000));return {...session,headers:{Cookie:'data_leases_buyer='+session.token,'X-CSRF-Token':session.csrfToken,'Content-Type':'application/json'}};}
+async function gateway(){const result=await startGateway({port:0,dataDirectory:directory,buyerAuth:new BuyerAuth(sessions,fixtureVerifier),buyerAuthEnabled:true});close=result.close;return result.baseUrl;}
 it('isolates lease reads, run lists, SSE, Parquet history and unowned mutations',async()=>{
  const alice=fixtureBuyer('alice'),bob=fixtureBuyer('bob'),lease=policy(),runId=randomUUID();
  const leases=new LeaseStore(join(directory,'leases.sqlite'));const buyers=new BuyerStore(leases);const approval=buyers.request(alice.buyerId,lease);buyers.complete(alice.buyerId,approval.approvalId,{buyerId:alice.buyerId,nonce:approval.nonce,purpose:approval.purpose,policyHash:approval.policyHash},'5000');
@@ -47,8 +48,23 @@ it('keeps activation pending, blocks client approval, enforces CSRF and revokes 
  expect((await mutate(bob,'/api/approvals/'+approval.approvalId+'/deny',{})).status).toBeGreaterThanOrEqual(400);
  expect((await mutate(alice,'/api/approvals/'+approval.approvalId+'/complete',{verified:true})).status).toBeGreaterThanOrEqual(400);
  expect((await mutate(alice,'/api/approvals/'+approval.approvalId+'/deny',{},false)).status).toBe(403);
+ const approve=(who:typeof alice,privyUser:string|undefined,body:unknown={policyHash:approval.policyHash})=>fetch(url+'/api/approvals/'+approval.approvalId+'/approve',{method:'POST',headers:{...who.headers,Origin:url,...(privyUser?{Authorization:'Bearer fixture-privy-token-'+privyUser}:{})},body:JSON.stringify(body)});
+ expect((await approve(alice,undefined)).status).toBe(401);
+ expect((await approve(alice,'bob')).status).toBe(403);
+ expect((await approve(bob,'bob')).status).toBeGreaterThanOrEqual(400);
+ expect((await approve(alice,'alice',{policyHash:'changed'})).status).toBe(400);
+ expect((await fetch(url+'/api/leases/'+lease.leaseId,{headers:alice.headers})).status).toBe(404);
  expect((await mutate(alice,'/api/approvals/'+approval.approvalId+'/deny',{})).status).toBe(200);
  expect((await fetch(url+'/api/leases/'+lease.leaseId,{headers:alice.headers})).status).toBe(404);
  expect((await mutate(alice,'/api/auth/logout',{})).status).toBe(200);
  expect((await fetch(url+'/api/runs',{headers:alice.headers})).status).toBe(401);
+});
+
+it('activates a lease only after the same Privy identity confirms the exact policy',async()=>{
+ const alice=fixtureBuyer('alice'),url=await gateway(),lease=policy();
+ const {approval}=await (await fetch(url+'/api/leases',{method:'POST',headers:alice.headers,body:JSON.stringify(lease)})).json();
+ const approved=await fetch(url+'/api/approvals/'+approval.approvalId+'/approve',{method:'POST',headers:{...alice.headers,Origin:url,Authorization:'Bearer fixture-privy-token-alice'},body:JSON.stringify({policyHash:approval.policyHash})});
+ expect(approved.status).toBe(200);expect((await approved.json()).approval.status).toBe('APPROVED');
+ expect((await fetch(url+'/api/leases/'+lease.leaseId,{headers:alice.headers})).status).toBe(200);
+ const replay=await fetch(url+'/api/approvals/'+approval.approvalId+'/approve',{method:'POST',headers:{...alice.headers,Origin:url,Authorization:'Bearer fixture-privy-token-alice'},body:JSON.stringify({policyHash:approval.policyHash})});expect(replay.status).toBe(409);
 });

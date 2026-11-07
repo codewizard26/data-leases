@@ -1,14 +1,14 @@
 # Provider diversity
 
-`pnpm dev` runs Scout, Atlas, Sage, Quill, Beacon and Meridian as six separate A2A HTTP services. They use separate negotiation state, provider signing identities, rate tables and payment journals. The dashboard sums fixed prices for selected measurements and pins one eligible provider. It makes no negotiation inference call for this flow.
+`pnpm dev` runs Scout, Atlas, Sage, Quill, Beacon, Meridian, Harbor, Ember, Vertex and Nova as ten separate A2A HTTP services. They use separate negotiation state, provider signing identities, rate tables and payment journals. The dashboard sums fixed prices for selected measurements and pins one eligible provider. It makes no negotiation inference call for this flow.
 
 Default local tariffs are illustrative seller settings, not model API costs, observed market prices or evidence of answer quality. One HBAR is 100,000,000 tinybars.
 
-| Task | Scout :4101 | Atlas :4102 | Sage :4103 | Quill :4104 | Beacon :4105 | Meridian :4106 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| USDC available liquidity | 500 | 700 | 950 | 650 | 1,100 | 800 |
-| USDC supply APY | 850 | 600 | 800 | 550 | 1,000 | 650 |
-| LINK explanation | 1,400 | 1,000 | 1,800 | 1,200 | 2,200 | 900 |
+| Task | Scout :4101 | Atlas :4102 | Sage :4103 | Quill :4104 | Beacon :4105 | Meridian :4106 | Harbor :4107 | Ember :4108 | Vertex :4109 | Nova :4110 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| USDC available liquidity | 500 | 700 | 950 | 650 | 1,100 | 800 | 600 | 750 | 1,000 | 550 |
+| USDC supply APY | 850 | 600 | 800 | 550 | 1,000 | 650 | 700 | 900 | 1,200 | 750 |
+| LINK explanation | 1,400 | 1,000 | 1,800 | 1,200 | 2,200 | 900 | 1,300 | 1,100 | 2,000 | 1,500 |
 
 Other tasks use each provider's base ask multiplied by that task's existing price multiplier. Floors remain private. Per-task overrides use `PROVIDER_A_UTILITY_RATES_JSON`, `PROVIDER_B_UTILITY_RATES_JSON`, and `PROVIDER_C_UTILITY_RATES_JSON`; each entry contains exact integer `askMinor` and `floorMinor` strings. Unknown services and invalid bounds fail startup.
 
@@ -45,7 +45,7 @@ pnpm test
 pnpm dev
 ```
 
-Integration tests start six separate HTTP providers, compare the same task's advertised and actual A2A asking rates, demonstrate a different cheapest provider for APY, and reject purchase acceptance without a merchant. Direct Claude transport tests use injected responses; they are not evidence of a real Anthropic inference call.
+Integration tests start ten separate HTTP providers, compare the same task's advertised and actual A2A asking rates, demonstrate a different cheapest provider for APY, and reject purchase acceptance without a merchant. Direct Claude transport tests use injected responses; they are not evidence of a real Anthropic inference call.
 
 ## On-demand requests
 
