@@ -157,7 +157,7 @@ Run a successful `cre workflow simulate` or current documented CRE CLI equivalen
 
 ### 3.4 One project, three prizes
 
-The primary submission targets are **Hedera x402 + Arkiv Build on Arkiv (from scratch) + Chainlink CRE workflow**. World ID Agent Pass is an explicitly requested product extension for buyer sessions and sensitive spending approvals; see Section 6.6. Before submitting to World, choose which primary target to replace if retaining the repository's three-sponsor submission limit. Adding this integration does not itself change that limit or establish prize qualification. Do not claim qualification for Hedera ATS (no securities issuance), Chainlink CCIP (no CCIP state change), or Arkiv Mirror (unless separately building a licensed, reproducible dataset mirror and intentionally choosing that instead of the Build track).
+The primary submission targets are **Hedera x402 + Arkiv Build on Arkiv (from scratch) + Chainlink CRE workflow**. World ID Agent Pass is deferred for a later product extension covering buyer sessions and sensitive spending approvals; see Section 6.6. Before submitting to World, choose which primary target to replace if retaining the repository's three-sponsor submission limit. Adding this integration does not itself change that limit or establish prize qualification. Do not claim qualification for Hedera ATS (no securities issuance), Chainlink CCIP (no CCIP state change), or Arkiv Mirror (unless separately building a licensed, reproducible dataset mirror and intentionally choosing that instead of the Build track).
 
 ---
 
@@ -419,7 +419,7 @@ Let `p` be the delivered report price; `u` provider payout ratio; `n` completed 
 
 ### 6.6 Buyer sessions and World-backed spending approvals
 
-**Requested scope extension; implementation and prize evidence remain pending.** Buyers need a persistent private workspace to manage their own leases, spending, payment reconciliation and budget changes. World ID Agent Pass supplies a human verification step for consequential actions. The application remains responsible for session security, resource ownership and payment authorization; human verification alone is not a wallet signature, proof of funds, private-data access entitlement or guarantee of answer correctness.
+**Deferred at user request. Do not implement this extension until it is explicitly resumed.** Implementation and prize evidence remain pending. Buyers need a persistent private workspace to manage their own leases, spending, payment reconciliation and budget changes. World ID Agent Pass supplies a human verification step for consequential actions. The application remains responsible for session security, resource ownership and payment authorization; human verification alone is not a wallet signature, proof of funds, private-data access entitlement or guarantee of answer correctness.
 
 **Product promise:** A person authorizes a bounded spending policy; their agents operate autonomously within it. A request to increase authority returns to that person for approval. The agent can suggest a change and explain its reason, but cannot approve its own request.
 

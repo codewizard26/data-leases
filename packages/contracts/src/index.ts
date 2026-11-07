@@ -141,4 +141,4 @@ export type {ArkivClient, RunPublicationInput, RunReceiptReference} from './inte
 export const ComputationResultSchema=z.object({provider:z.enum(['MOCK','0G','CLAUDE','OPENROUTER']),model:z.string().min(1).max(256),text:z.string().min(1).max(8000)}).strict();
 export type ComputationResult=z.infer<typeof ComputationResultSchema>;
 
-export * from "./buyer.js";
+export * from "./lease-policy.js";

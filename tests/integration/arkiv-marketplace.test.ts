@@ -33,7 +33,7 @@ test('comparison reads published Arkiv offers, registration is explicit and repe
  const offers=await registryOffers(f.providers.map((provider,index)=>({providerId:'provider-'+(index?'b':'a'),origin:provider.baseUrl})),template,{async queryProviderOffers(){return [changed];}});
  expect(offers[0]).toMatchObject({askMinor:'499',available:false,status:'RATE_CHANGED'});
 });
-test('manual mandates persist without starting any runs and private owner filtering remains enforced',async()=>{
+test('manual mandates persist without starting any runs',async()=>{
  const f=await fixture();vi.stubEnv('HEDERA_MAX_PAYMENT_TINYBARS','1000');
  const id=randomUUID();const saved=await fetch(f.server.baseUrl+'/api/leases',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({leaseId:id,questionTemplateId:'ERC20_TOKEN_METADATA',currency:'hedera:testnet/HBAR',providerIds:['provider-a'],perRequestTinybars:'500',totalTinybars:'1000',maxAgeSeconds:60,maxRounds:3,paymentsAuthorized:true,expiresAt:new Date(Date.now()+3600000).toISOString()})});expect(saved.status).toBe(201);
  const mandates=await fetch(f.server.baseUrl+'/api/mandates').then(response=>response.json());expect(mandates.mandates).toHaveLength(1);expect(mandates.mandates[0]).toMatchObject({active:true,remainingTinybars:'1000',policy:{providerIds:['provider-a']}});
