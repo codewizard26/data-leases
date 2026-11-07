@@ -1,0 +1,25 @@
+# Services bind 127.0.0.1 only, so both containers use host networking.
+# Caddy is the only thing exposed publicly (80/443) and proxies to the gateway on 127.0.0.1:3000.
+services:
+  app:
+    build: ../..
+    network_mode: host
+    restart: unless-stopped
+    env_file: ../../.env
+    environment:
+      START_WEB: "false"
+    volumes:
+      - ../../data:/app/data
+  caddy:
+    image: caddy:2
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN, e.g. 1-2-3-4.sslip.io}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  caddy_data:
+  caddy_config:
