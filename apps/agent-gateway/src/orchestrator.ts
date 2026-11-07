@@ -1,3 +1,5 @@
+import {FixedBundleQuoteSchema,type FixedBundleQuote,type PaidAnalysisBrief,PaidAnalysisBriefSchema} from '@data-leases/contracts';
+import {bundleTermsHash,bundlePaymentQuote} from '@data-leases/agents';
 import {eventDisclosure} from './data-access.js';
 import {EventEmitter} from 'node:events';
 import {randomUUID} from 'node:crypto';
@@ -9,13 +11,14 @@ import {EventStore} from '@data-leases/event-store';
 import {LeaseStore} from './lease-store.js';
 export const RunInputSchema=z.object({runId:z.string().uuid(),leaseId:z.string().uuid(),mode:z.enum(['DIRECT_URL','LOCAL_REGISTRY','ARKIV','HYBRID']),directCardUrl:z.string().url().optional()}).strict();
 export interface ProviderConnection {providerId:string;origin:string;payTo:string}
-export interface PaymentResult {answer:AnswerEnvelope;computation?:ComputationResult;payment:{network:string;transaction:string;payer?:string;success:boolean}}
-export interface RunState {runId:string;sessionId:string;leaseId:string;status:string;paymentStatus:string;deliveryStatus:string;verificationStatus:string;publicationStatus:string;providers?:DiscoveredAgent[];quote?:Readonly<NegotiationMessage>;resourceUrl?:string;payment?:PaymentResult['payment'];hashScanUrl?:string;answer?:AnswerEnvelope;computation?:ComputationResult;verification?:VerificationResult;receipts?:RunReceiptReference[];error?:string}
+export interface PaymentResult {answer:AnswerEnvelope;answers?:AnswerEnvelope[];analysisBrief?:PaidAnalysisBrief;computation?:ComputationResult;payment:{network:string;transaction:string;payer?:string;success:boolean}}
+export interface BundleMeasurement {answer:AnswerEnvelope;verificationId:string;verification?:VerificationResult;publicationStatus:string;receipt?:RunReceiptReference;error?:string}
+export interface RunState {analysisBrief?:PaidAnalysisBrief;bundleQuote?:FixedBundleQuote;measurements?:BundleMeasurement[];settledAt?:string;runId:string;sessionId:string;leaseId:string;status:string;paymentStatus:string;deliveryStatus:string;verificationStatus:string;publicationStatus:string;providers?:DiscoveredAgent[];quote?:Readonly<NegotiationMessage>;resourceUrl?:string;payment?:PaymentResult['payment'];hashScanUrl?:string;answer?:AnswerEnvelope;computation?:ComputationResult;verification?:VerificationResult;receipts?:RunReceiptReference[];error?:string}
 export class RunOrchestrator {
  readonly events=new EventEmitter();
  private publicationInFlight=new Map<string,Promise<void>>();
  private active=new Map<string,Promise<void>>();
- constructor(private readonly config:{store:EventStore;leases:LeaseStore;providers:ProviderConnection[];verification:VerificationClient;arkiv?:ArkivClient;liveOnly?:boolean;negotiationMode?:'MOCK'|'LIVE';strategy?:NegotiationStrategy;payment:(input:{quote:PaymentQuote;url:string;payTo:string})=>Promise<PaymentResult>;paymentReady:()=>boolean;paymentRecord?:(runId:string)=>{status:string;receipt?:PaymentResult['payment']}|undefined}){
+ constructor(private readonly config:{store:EventStore;leases:LeaseStore;providers:ProviderConnection[];verification:VerificationClient;arkiv?:ArkivClient;liveOnly?:boolean;negotiationMode?:'MOCK'|'LIVE';strategy?:NegotiationStrategy;payment:(input:{quote:PaymentQuote;url:string;payTo:string})=>Promise<PaymentResult>;validateFixedQuote?:(quote:FixedBundleQuote)=>Promise<void>;paymentReady:()=>boolean;paymentRecord?:(runId:string)=>{status:string;receipt?:PaymentResult['payment']}|undefined}){
   for(const prior of this.config.leases.runs() as RunState[]){if(!['COMPLETED','FAILED','VERIFICATION_PENDING','QUOTES_READY'].includes(prior.status)){if(prior.paymentStatus==='IN_PROGRESS'){const record=this.config.paymentRecord?.(prior.runId);prior.paymentStatus=record?.receipt?'SETTLED':'UNKNOWN';if(record?.receipt)prior.payment=record.receipt;this.config.leases.mark(prior.runId,record?.receipt?'SETTLED':'UNKNOWN');}prior.error='RUN_INTERRUPTED_RECONCILE_REQUIRED';prior.status='FAILED';this.save(prior);}}
  }
  get(runId:string):RunState|undefined{return this.config.leases.run(runId) as RunState|undefined;}
@@ -52,6 +55,7 @@ export class RunOrchestrator {
  async wait(runId:string){await this.active.get(runId);return this.get(runId);}
  private async execute(run:RunState,input:z.infer<typeof RunInputSchema>){let reserved=false;let submitted=false;
   try{
+   if(this.config.leases.get(run.leaseId).policy.measurementIds){await this.executeFixed(run,input);return;}
    if(this.config.liveOnly&&(this.config.negotiationMode!=='LIVE'||!this.config.strategy))throw new Error('LIVE_AI_NOT_CONFIGURED');
    const {policy}=this.config.leases.get(run.leaseId);
    this.emit(run,'DISCOVERY_STARTED','DISCOVERING',{mode:input.mode,questionTemplateId:policy.questionTemplateId});
@@ -87,13 +91,76 @@ export class RunOrchestrator {
    run.status='FAILED';this.save(run);this.emit(run,'ERROR',safe,{code:safe,paymentStatus:run.paymentStatus});
   }finally{await this.config.store.flush();}
  }
+ private async executeFixed(run:RunState,input:z.infer<typeof RunInputSchema>){
+  let reserved=false,submitted=false;
+  try{
+   const {policy}=this.config.leases.get(run.leaseId),ids=[...policy.measurementIds!].sort();
+   if(policy.providerIds.length!==1||policy.schedule||!policy.paymentsAuthorized||!ids.includes(policy.questionTemplateId))throw Error('INVALID_BUNDLE_MANDATE');
+   const connection=this.config.providers.find(p=>p.providerId===policy.providerIds[0]&&p.payTo);if(!connection||!this.config.paymentReady())throw Error('PAYMENT_SETUP_REQUIRED');
+   // Every item must remain discoverable from an allowed provider before any payment.
+   run.status='CONFIRMING_PRICE';this.save(run);
+   for(const id of ids){const task=scenarioForTemplate(id);if(!task||task.operation!=='READ'||task.dataAccess.classification!=='PUBLIC')throw Error('UNSUPPORTED_MEASUREMENT');
+    const found=await this.discover({schemaVersion:'1.0.0',sessionId:run.sessionId,mode:input.mode,directCardUrl:input.directCardUrl,questionTemplateId:id,maxPriceMinor:policy.perRequestTinybars,currency:policy.currency,maxAgeSeconds:policy.maxAgeSeconds,requestedAt:new Date().toISOString()});
+    if(!found.some(p=>p.providerId===connection.providerId))throw Error('BUNDLE_ITEM_NOT_LISTED');
+   }
+   const response=await fetch(connection.origin+'/fixed-quotes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:run.runId,measurementIds:ids,analysisPersona:policy.analysisPersona,maxAgeSeconds:policy.maxAgeSeconds}),redirect:'error',signal:AbortSignal.timeout(10000)});
+   if(!response.ok)throw Error('FIXED_QUOTE_UNAVAILABLE');
+   const {quote:raw}=await response.json() as {quote:unknown},quote=FixedBundleQuoteSchema.parse(raw);
+   if(quote.analysis?.persona!==policy.analysisPersona||quote.runId!==run.runId||quote.providerId!==connection.providerId||quote.payTo!==connection.payTo||quote.maxAgeSeconds!==policy.maxAgeSeconds||quote.termsHash!==bundleTermsHash(quote)||JSON.stringify(quote.items.map(i=>i.questionTemplateId))!==JSON.stringify(ids)||Date.parse(quote.expiresAt)<=Date.now()||Date.parse(quote.expiresAt)>Date.now()+185000)throw Error('QUOTE_TERMS_MISMATCH');
+   await this.config.validateFixedQuote?.(quote);run.bundleQuote=quote;this.save(run);this.emit(run,'QUOTE','FIXED_PRICE_CONFIRMED',{quote,notice:quote.analysis?'Fixed source and analysis prices. One inference on explicit preparation.':'Fixed item prices. No bargaining or model inference.'},connection.providerId);
+   this.config.leases.reserve(run.leaseId,run.runId,connection.providerId,quote.priceMinor);reserved=true;
+   run.status=quote.analysis?'ANALYZING':'PREPARING';this.save(run);this.emit(run,'ANSWER_REQUESTED',quote.analysis?'ANALYSIS_STARTED':'PREPARING_SOURCES',{persona:quote.analysis?.persona,measurementIds:ids},connection.providerId);
+   const prepared=await fetch(connection.origin+'/fixed-quotes/prepare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(quote),redirect:'error',signal:AbortSignal.timeout(120000)});
+   if(!prepared.ok)throw Error(quote.analysis?'ANALYSIS_PREPARATION_FAILED':'BUNDLE_SOURCE_UNAVAILABLE');
+   const current=this.config.leases.get(run.leaseId);if(!current.active||Date.parse(current.policy.expiresAt)<=Date.now())throw Error('LEASE_EXPIRED_OR_CANCELLED');
+   run.status='PAYING';run.paymentStatus='IN_PROGRESS';this.save(run);submitted=true;this.emit(run,'ANSWER_REQUESTED','PAYMENT_ATTEMPT',{amountTinybars:quote.priceMinor,measurementIds:ids},connection.providerId);
+   const paid=await this.config.payment({quote:bundlePaymentQuote(quote),url:connection.origin+'/paid-answers/'+encodeURIComponent(run.runId),payTo:connection.payTo});
+   run.payment=paid.payment;run.paymentStatus='SETTLED';run.settledAt=new Date().toISOString();run.hashScanUrl='https://hashscan.io/testnet/transaction/'+encodeURIComponent(paid.payment.transaction);this.config.leases.mark(run.runId,'SETTLED');this.save(run);this.emit(run,'NEGOTIATION_OUTCOME','PAYMENT_SETTLED',{payment:run.payment,amountTinybars:quote.priceMinor,hashScanUrl:run.hashScanUrl},connection.providerId);
+   const answers=paid.answers;if(!answers||answers.length!==ids.length)throw Error('BUNDLE_DELIVERY_MISMATCH');
+   run.measurements=[];
+   for(const [index,answer] of answers.entries()){const task=scenarioForTemplate(ids[index]!)!;
+    if(answer.runId!==run.runId||answer.providerId!==connection.providerId||answer.sessionId!==run.runId||answer.negotiationId!==quote.quoteId||answer.acceptedQuoteId!==quote.quoteId||answer.questionTemplateId!==ids[index]||answer.metric!==task.metric||answer.unit!==task.unit||answer.chainId!==task.chainId||answer.sourceContract!==task.sourceContract||answer.methodologyVersion!==task.methodologyVersion||answer.evidencePolicyId!==task.evidencePolicyId)throw Error('BUNDLE_DELIVERY_MISMATCH');
+    const age=Date.now()-Date.parse(answer.deliveredAt);if(age< -5000||age>policy.maxAgeSeconds*1000)throw Error('STALE_ANSWER');
+    run.measurements.push({answer,verificationId:randomUUID(),publicationStatus:'NOT_REQUESTED'});
+   }
+   if(quote.analysis){run.analysisBrief=PaidAnalysisBriefSchema.parse(paid.analysisBrief);if(run.analysisBrief.persona!==quote.analysis.persona||run.analysisBrief.runId!==run.runId)throw Error('ANALYSIS_BINDING_MISMATCH');}
+   run.answer=answers.find(a=>a.questionTemplateId===policy.questionTemplateId)??answers[0];run.deliveryStatus='DELIVERED';run.status='VERIFICATION_PENDING';run.verificationStatus='PENDING';this.save(run);
+   this.emit(run,'ANSWER_DELIVERED','BUNDLE_DELIVERED',{answers,payment:run.payment},connection.providerId);
+   for(const item of run.measurements){const request=VerificationRequestSchema.parse({schemaVersion:'1.0.0',verificationId:item.verificationId,runId:run.runId,sessionId:run.sessionId,providerId:connection.providerId,questionTemplateId:item.answer.questionTemplateId,answer:item.answer,policy:{policyId:item.answer.evidencePolicyId,version:'1.0.0',allowedChainIds:[item.answer.chainId],allowedMetricIds:[item.answer.metric],maxAgeSeconds:policy.maxAgeSeconds,maxAbsDeltaRaw:'0'},requestedAt:new Date().toISOString()});
+    this.emit(run,'VERIFICATION_REQUEST','PENDING',request,connection.providerId);try{await this.config.verification.submit(request);}catch{item.error='VERIFICATION_SUBMISSION_FAILED';this.save(run);}
+   }
+   await this.refreshBundle(run);
+  }catch(error){const code=error instanceof Error&&/^[A-Z_]+$/.test(error.message)?error.message:'BUNDLE_REQUEST_FAILED';run.error=code;
+   if(reserved&&run.paymentStatus!=='SETTLED'){const record=this.config.paymentRecord?.(run.runId);if(record?.receipt){run.payment=record.receipt;run.paymentStatus='SETTLED';this.config.leases.mark(run.runId,'SETTLED');}
+    else if(submitted&&!['PAYMENT_NOT_SUBMITTED','LEASE_EXPIRED_OR_CANCELLED','INSUFFICIENT_BALANCE','PAYMENT_BUDGET_EXCEEDED','PAYMENT_TERMS_MISMATCH','PAYMENT_QUOTE_EXPIRED','HEDERA_BALANCE_UNAVAILABLE','EXPECTED_X402_PAYMENT_CHALLENGE'].includes(code)){run.paymentStatus='UNKNOWN';this.config.leases.mark(run.runId,'UNKNOWN');}
+    else{run.paymentStatus='NOT_SUBMITTED';this.config.leases.mark(run.runId,'RELEASED');}}
+   run.status='FAILED';this.save(run);this.emit(run,'ERROR',code,{code,paymentStatus:run.paymentStatus});
+  }
+ }
+ private bundleRefreshInFlight=new Map<string,Promise<void>>();
+ private refreshBundle(run:RunState){const pending=this.bundleRefreshInFlight.get(run.runId);if(pending)return pending;const task=this.refreshBundleOnce(run).finally(()=>this.bundleRefreshInFlight.delete(run.runId));this.bundleRefreshInFlight.set(run.runId,task);return task;}
+ private async refreshBundleOnce(run:RunState){
+  if(!run.bundleQuote||!run.measurements)return;
+  for(const item of run.measurements){
+   if(!item.verification){const raw=await this.config.verification.getResult(item.verificationId);if(raw){const result=VerificationResultSchema.parse(raw);if(result.verificationId!==item.verificationId||result.runId!==run.runId||result.providerId!==item.answer.providerId)throw Error('VERIFICATION_BINDING_MISMATCH');item.verification=result;this.emit(run,'VERIFICATION_RESULT',result.executionMode+':'+result.status,{questionTemplateId:item.answer.questionTemplateId,result});this.save(run);}}
+   if(item.verification&&!item.receipt){if(item.verification.status!=='ACCEPTED'||item.verification.executionMode==='MOCK'){item.publicationStatus='NOT_ELIGIBLE';continue;}
+    try{if(!this.config.arkiv)throw Error('ARKIV_NOT_CONFIGURED');item.receipt=await this.config.arkiv.publishVerifiedRun({runId:run.runId,providerId:run.bundleQuote.providerId,quoteId:run.bundleQuote.quoteId,payment:{network:'hedera:testnet',transactionId:run.payment!.transaction,amountTinybars:run.bundleQuote.priceMinor,hashScanUrl:run.hashScanUrl!,settledAt:run.settledAt},verification:item.verification});if(item.receipt.runId!==run.runId||!item.receipt.reference)throw Error('PUBLICATION_BINDING_MISMATCH');item.publicationStatus='PUBLISHED';}
+    catch{item.publicationStatus='PENDING_RETRY';}this.save(run);
+   }
+  }
+  run.receipts=run.measurements.flatMap(item=>item.receipt?[item.receipt]:[]);
+  const pending=run.measurements.some(item=>!item.verification);
+  run.verificationStatus=pending?'PENDING':run.measurements.every(item=>item.verification?.status==='ACCEPTED')?'ACCEPTED':run.measurements.some(item=>item.verification?.status==='REJECTED')?'REJECTED':'INCONCLUSIVE';
+  run.publicationStatus=run.measurements.some(item=>item.publicationStatus==='PENDING_RETRY')?'PENDING_RETRY':run.receipts.length===run.measurements.length?'PUBLISHED':run.receipts.length?'PARTIALLY_PUBLISHED':pending?'NOT_REQUESTED':'NOT_ELIGIBLE';
+  run.status=pending?'VERIFICATION_PENDING':'COMPLETED';this.save(run);
+ }
  private async completeVerification(run:RunState,verificationId:string){
   const raw=await this.config.verification.getResult(verificationId);if(!raw){run.status='VERIFICATION_PENDING';this.save(run);return;}
   if(this.get(run.runId)?.verification?.verificationId===verificationId)return;
   const result=VerificationResultSchema.parse(raw);if(result.verificationId!==verificationId||result.runId!==run.answer?.runId||result.providerId!==run.answer.providerId)throw new Error('VERIFICATION_BINDING_MISMATCH');
   run.verification=result;run.verificationStatus=result.executionMode+':'+result.status;this.save(run);this.emit(run,'VERIFICATION_RESULT',run.verificationStatus,result);if(result.status==='ACCEPTED'&&result.executionMode!=='MOCK')await this.publish(run);else{run.publicationStatus='NOT_ELIGIBLE';run.status='COMPLETED';this.save(run);}
  }
- async refreshVerification(runId:string){const run=this.get(runId);if(!run||run.status!=='VERIFICATION_PENDING')return run;const events=this.config.store.list(run.sessionId);const last=events.filter(e=>e.eventType==='VERIFICATION_REQUEST').at(-1);if(last)await this.completeVerification(run,JSON.parse(last.payloadJson).verificationId);await this.config.store.flush();return this.get(runId);}
+ async refreshVerification(runId:string){const run=this.get(runId);if(run?.bundleQuote){await this.refreshBundle(run);await this.config.store.flush();return this.get(runId);}if(!run||run.status!=='VERIFICATION_PENDING')return run;const events=this.config.store.list(run.sessionId);const last=events.filter(e=>e.eventType==='VERIFICATION_REQUEST').at(-1);if(last)await this.completeVerification(run,JSON.parse(last.payloadJson).verificationId);await this.config.store.flush();return this.get(runId);}
  async publish(run:RunState){const prior=this.publicationInFlight.get(run.runId);if(prior)return prior;const task=this.publishOnce(run).finally(()=>this.publicationInFlight.delete(run.runId));this.publicationInFlight.set(run.runId,task);return task;}
  private async publishOnce(run:RunState){
   const stored=this.get(run.runId);if(stored?.receipts?.length)run.receipts=stored.receipts;
@@ -108,5 +175,5 @@ export class RunOrchestrator {
  }
  reconciled(runId:string,record:{status:string;receipt?:PaymentResult['payment']}){const run=this.get(runId);if(!run||!record.receipt)return;run.payment=record.receipt;run.paymentStatus='SETTLED';run.hashScanUrl='https://hashscan.io/testnet/transaction/'+encodeURIComponent(record.receipt.transaction);if(!run.answer)run.deliveryStatus='DELIVERY_RECOVERY_REQUIRED';this.config.leases.mark(runId,'SETTLED');this.save(run);this.emit(run,'NEGOTIATION_OUTCOME','PAYMENT_RECONCILED',{payment:run.payment,deliveryStatus:run.deliveryStatus});void this.config.store.flush().catch(()=>{});}
  async drain(){await Promise.allSettled([...this.active.values(),...this.publicationInFlight.values()]);}
- async retryPublication(runId:string){const run=this.get(runId);if(!run||run.publicationStatus!=='PENDING_RETRY')throw new Error('PUBLICATION_NOT_PENDING');await this.publish(run);await this.config.store.flush();return this.get(runId);}
+ async retryPublication(runId:string){const run=this.get(runId);if(run?.bundleQuote){await this.refreshBundle(run);await this.config.store.flush();return this.get(runId);}if(!run||run.publicationStatus!=='PENDING_RETRY')throw new Error('PUBLICATION_NOT_PENDING');await this.publish(run);await this.config.store.flush();return this.get(runId);}
 }

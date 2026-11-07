@@ -67,3 +67,12 @@ test('service-specific accepted Aave receipts publish, but omitted required chec
  verified={...verified,checks:verified.checks.filter(check=>check.checkId!=='SOURCE_CONTRACT_ALLOWED')};
  await expect(client.publishAnswerReceipt(input.verificationId)).rejects.toThrow('UNSUPPORTED_ACCEPTED_VERIFICATION');
 });
+test('bundle measurements publish separate receipts and one shared payment reference',async()=>{
+ const transport=new FakeTransport(),one=request,two=VerificationRequestSchema.parse({...request,verificationId:'22222222-2222-4222-8222-222222222222'});
+ const results=[result(),{...result(),verificationId:two.verificationId,executedAt:'2026-11-06T12:00:01.000Z'}];
+ const client=new ArkivEvidenceClient({transport,journal:new PublicationJournal(':memory:'),clock:()=>new Date(now),verification:{submit:async input=>({verificationId:input.verificationId,state:'COMPLETED'}),getRequest:async id=>id===one.verificationId?one:two,getResult:async id=>results.find(r=>r.verificationId===id)??null}});cleanups.push(()=>client.close());
+ for(const verified of results)await client.publishVerifiedRun({runId:request.runId,providerId:request.providerId,quoteId:request.answer.acceptedQuoteId,payment:{network:'hedera:testnet',transactionId:'0.0.999@123.000000001',amountTinybars:'1350',hashScanUrl:'https://hashscan.io/testnet/transaction/test',settledAt:now},verification:verified});
+ expect(transport.entities.filter(e=>e.record.entityType==='PaymentReference')).toHaveLength(1);
+ expect(transport.entities.filter(e=>e.record.entityType==='AnswerReceipt')).toHaveLength(2);
+ expect(transport.entities.filter(e=>e.record.entityType==='VerificationRecord')).toHaveLength(2);
+});

@@ -1,6 +1,6 @@
 # Provider diversity
 
-`pnpm dev` runs Scout, Atlas, Sage, Quill, Beacon and Meridian as six separate A2A HTTP services. They use separate negotiation state, provider signing identities, rate tables and payment journals. The buyer compares eligible offers for the same task and chooses an acceptable negotiated price within its authorization.
+`pnpm dev` runs Scout, Atlas, Sage, Quill, Beacon and Meridian as six separate A2A HTTP services. They use separate negotiation state, provider signing identities, rate tables and payment journals. The dashboard sums fixed prices for selected measurements and pins one eligible provider. It makes no negotiation inference call for this flow.
 
 Default local tariffs are illustrative seller settings, not model API costs, observed market prices or evidence of answer quality. One HBAR is 100,000,000 tinybars.
 
@@ -12,7 +12,7 @@ Default local tariffs are illustrative seller settings, not model API costs, obs
 
 Other tasks use each provider's base ask multiplied by that task's existing price multiplier. Floors remain private. Per-task overrides use `PROVIDER_A_UTILITY_RATES_JSON`, `PROVIDER_B_UTILITY_RATES_JSON`, and `PROVIDER_C_UTILITY_RATES_JSON`; each entry contains exact integer `askMinor` and `floorMinor` strings. Unknown services and invalid bounds fail startup.
 
-Scout prefers an acceptable counteroffer, Atlas balances agreement with margin, and Sage prefers preserving margin. These instructions guide the configured model. Deterministic policy still rejects prices outside the bounds, limits rounds and prevents unauthorized spending.
+In the legacy negotiation API, Scout prefers an acceptable counteroffer, Atlas balances agreement with margin, and Sage prefers preserving margin. These instructions guide the configured model. Deterministic policy still rejects prices outside the bounds, limits rounds and prevents unauthorized spending.
 
 ## Configure different models
 
@@ -32,7 +32,7 @@ The direct adapter uses Anthropic's Messages API and JSON schema output for nego
 
 ## Compare and buy
 
-Open the service's **Compare agents** tab. Arkiv supplies published offers; local drafts are labeled separately. Choose one eligible published provider, then set a reusable spending mandate with per-request and total caps and an expiry. Saving starts no work. **Request answer · pay with x402** starts one explicit purchase from that provider. Repeated requests share the mandate budget. Payment, verification and publication remain separate outcomes.
+Open the service's **Compare agents** tab. Arkiv supplies published offers; local drafts are labeled separately. Choose one eligible published provider, then set a reusable spending mandate with per-request and total caps and an expiry. Saving starts no work. **Request selected answers · pay with x402** starts one explicit purchase from that provider. Repeated requests share the mandate budget. Payment, verification and publication remain separate outcomes.
 
 Every selling provider requires its configured `HEDERA_PROVIDER_X_ACCOUNT_ID`. Unconfigured providers stay quote-only; the application never silently reuses another merchant. Model variety and pricing do not establish independent data ownership or superior correctness.
 

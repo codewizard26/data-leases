@@ -1,3 +1,4 @@
+import {RESEARCH_TASKS} from '@data-leases/contracts';
 export interface TaskDataAccess {
   classification: 'PUBLIC' | 'PRIVATE';
   previewKind: 'SAMPLE' | 'METADATA_ONLY';
@@ -157,6 +158,7 @@ export const DEMO_SCENARIOS: readonly DemoScenario[] = [
     serviceUnit: {billingUnit: scenario.operation === 'COMPUTE' ? 'PER_COMPUTATION' : 'PER_REQUEST', includedMetrics: 1, deliverable: scenario.operation === 'COMPUTE' ? 'One generated LINK explanation, at most 120 words.' : 'One '+scenario.metric+' metric in '+scenario.unit+'.'},
   })),
   ...ADDITIONAL_SCENARIOS,
+  ...RESEARCH_TASKS.map((task):DemoScenario=>({operation:'COMPUTE',id:task.id.toLowerCase(),questionTemplateId:task.id,title:task.title,description:task.question+' '+task.deliverable,metric:task.id.toLowerCase()+'.delivered_reports',unit:'GENERATED_REPORTS',value:'1',chainId:'offchain:public-apis',sourceContract:undefined,methodologyVersion:'public-api-research-v1',evidencePolicyId:'external-research-v1',demoTrustMode:'UNTRUSTED_MOCK',synthetic:false,retired:false,category:'Research · '+task.persona.toLowerCase().replaceAll('_',' '),dataAccess:access('PUBLIC',1),verificationSupport:'UNSUPPORTED',suggestedMaxAgeSeconds:300,computationPrompt:'This report requires the fixed-price research endpoint and live source evidence; do not fabricate a report from this placeholder.',serviceUnit:{billingUnit:'PER_COMPUTATION',includedMetrics:1,deliverable:task.deliverable}})),
 ];
 
 /** Public catalog projection: never serialize answer values, prompts or source evidence. */

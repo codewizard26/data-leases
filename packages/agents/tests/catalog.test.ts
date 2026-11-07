@@ -1,18 +1,19 @@
+import {RESEARCH_TASKS} from '@data-leases/contracts';
 import {expect,test} from 'vitest';
 import {DEMO_SCENARIOS,publicTaskTemplate,scenarioForTemplate} from '../src/scenarios.js';
 
 test('catalog adds twenty uniquely identified read tasks without replacing legacy tasks',()=>{
- expect(DEMO_SCENARIOS).toHaveLength(26);
- expect(new Set(DEMO_SCENARIOS.map(task=>task.id)).size).toBe(26);
- expect(new Set(DEMO_SCENARIOS.map(task=>task.questionTemplateId)).size).toBe(26);
- expect(DEMO_SCENARIOS.slice(6)).toHaveLength(20);
- expect(DEMO_SCENARIOS.slice(6).every(task=>task.operation==='READ')).toBe(true);
+ expect(DEMO_SCENARIOS).toHaveLength(26+RESEARCH_TASKS.length);
+ expect(new Set(DEMO_SCENARIOS.map(task=>task.id)).size).toBe(26+RESEARCH_TASKS.length);
+ expect(new Set(DEMO_SCENARIOS.map(task=>task.questionTemplateId)).size).toBe(26+RESEARCH_TASKS.length);
+ expect(DEMO_SCENARIOS.slice(6).filter(task=>task.operation==='READ')).toHaveLength(20);
+ expect(DEMO_SCENARIOS.slice(6).filter(task=>task.operation==='READ').every(task=>task.operation==='READ')).toBe(true);
  expect(scenarioForTemplate('ETHEREUM_LENDING_LIQUIDITY')?.questionTemplateId).toBe('AAVE_V3_USDC_AVAILABLE_LIQUIDITY');
  expect(scenarioForTemplate('ERC20_TOKEN_METADATA')?.verificationSupport).toBe('LINK_CRE');
 });
 
 test('new tasks contain ten public and ten private synthetic measurements with honest verification limits',()=>{
- const added=DEMO_SCENARIOS.slice(6);
+ const added=DEMO_SCENARIOS.slice(6).filter(task=>task.operation==='READ');
  expect(added.filter(task=>task.dataAccess.classification==='PUBLIC')).toHaveLength(10);
  expect(added.filter(task=>task.dataAccess.classification==='PRIVATE')).toHaveLength(10);
  for(const task of added){
@@ -49,7 +50,7 @@ test('legacy provider rate multipliers remain unchanged',()=>{
 
 
 test('service catalog retires whole-write demo and bills only one metric or computation',()=>{
- expect(DEMO_SCENARIOS.filter(task=>!task.retired)).toHaveLength(25);
+ expect(DEMO_SCENARIOS.filter(task=>!task.retired)).toHaveLength(25+RESEARCH_TASKS.length);
  const retired=DEMO_SCENARIOS.find(task=>task.operation==='WRITE')!;expect(retired.retired).toBe(true);
  expect(()=>publicTaskTemplate(retired)).toThrow('RETIRED_TASK');
  for(const task of DEMO_SCENARIOS.filter(task=>!task.retired)){

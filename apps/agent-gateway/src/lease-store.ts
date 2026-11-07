@@ -53,5 +53,22 @@ export class LeaseStore {
  claimOccurrence(id:string,now:number,runId:string){return Number(this.db.prepare("UPDATE lease_schedules SET active_run_id=?,next_run_at=? WHERE lease_id=? AND state='ACTIVE' AND active_run_id IS NULL AND next_run_at<=?").run(runId,now+this.get(id).policy.schedule!.intervalSeconds*1000,id,now).changes)===1;}
  completeOccurrence(id:string,runId:string,now:number){const row=this.schedule(id);if(!row||row.activeRunId!==runId)return;const interval=this.get(id).policy.schedule!.intervalSeconds*1000;this.db.prepare('UPDATE lease_schedules SET last_run_id=?,active_run_id=NULL,next_run_at=? WHERE lease_id=? AND active_run_id=?').run(runId,row.nextRunAt<=now?now+interval:row.nextRunAt,id,runId);}
  fundedRuns(id:string){return Number(this.db.prepare("SELECT COUNT(*) AS count FROM reservations WHERE lease_id=? AND status!='RELEASED'").get(id)?.count);}
+ /** Private spending totals include every owned reservation, independent of the bounded run history. */
+ buyerSpending(buyerId:string){const rows=this.db.prepare('SELECT r.amount,r.status FROM reservations r JOIN buyer_lease_owners o ON o.lease_id=r.lease_id WHERE o.buyer_id=?').all(buyerId);let settled=0n,held=0n;for(const row of rows){if(row.status==='SETTLED')settled+=BigInt(String(row.amount));else if(row.status!=='RELEASED')held+=BigInt(String(row.amount));}return {settledTinybars:settled.toString(),heldTinybars:held.toString(),settledPurchases:rows.filter(row=>row.status==='SETTLED').length};}
+ /** Internal buyer authorization integration. All operations use this connection's transaction. */
+ buyerDatabase(){return this.db;}
+ buyerTransaction<T>(work:()=>T):T{this.db.exec('BEGIN IMMEDIATE');try{const result=work();this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}}
+ buyerApplyPolicy(input:LeasePolicy,activate:boolean){
+  const policy=LeasePolicySchema.parse(input);
+  if(Date.parse(policy.expiresAt)<=Date.now()||BigInt(policy.perRequestTinybars)>BigInt(policy.totalTinybars)||(policy.schedule&&(!policy.paymentsAuthorized||policy.maxRuns===1)))throw new Error('INVALID_LEASE_POLICY');
+  const existing=this.db.prepare('SELECT id FROM leases WHERE id=?').get(policy.leaseId);
+  if(existing){const old=this.get(policy.leaseId);if(BigInt(policy.totalTinybars)<BigInt(old.reservedTinybars))throw new Error('CAP_BELOW_COMMITTED_SPEND');}
+  const value=JSON.stringify(policy),signature=sign(null,Buffer.from(value),this.privateKey).toString('base64');
+  if(existing)this.db.prepare('UPDATE leases SET policy=?,signature=? WHERE id=?').run(value,signature,policy.leaseId);
+  else {if(!activate)throw new Error('LEASE_NOT_FOUND');this.db.prepare('INSERT INTO leases VALUES(?,?,?,1)').run(policy.leaseId,value,signature);}
+  if(policy.schedule)this.db.prepare("INSERT OR IGNORE INTO lease_schedules VALUES(?,'ACTIVE',?,NULL,NULL,NULL)").run(policy.leaseId,Date.now());
+  else this.db.prepare('DELETE FROM lease_schedules WHERE lease_id=?').run(policy.leaseId);
+  return this.get(policy.leaseId);
+ }
  close(){this.db.close();}
 }
