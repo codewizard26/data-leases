@@ -27,3 +27,4 @@ workflows/cre/**/.env
 workflows/cre/**/secrets.json
 # Next.js regenerates these imports differently in dev and build modes.
 apps/web/next-env.d.ts
+.vercel
