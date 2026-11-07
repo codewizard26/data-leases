@@ -17,6 +17,11 @@ export class BuyerStore {
  assertOwner(buyerId:string,leaseId:string){const row=this.db().prepare('SELECT buyer_id,revision FROM buyer_lease_owners WHERE lease_id=?').get(leaseId);if(!row||row.buyer_id!==buyerId)throw new Error('LEASE_NOT_FOUND');return Number(row.revision);}
  ownResource(buyerId:string,kind:'RUN'|'SESSION'|'VERIFICATION',id:string){const row=this.db().prepare('SELECT buyer_id FROM buyer_resource_owners WHERE kind=? AND id=?').get(kind,id);if(row&&row.buyer_id!==buyerId)throw new Error('RESOURCE_NOT_FOUND');this.db().prepare('INSERT OR IGNORE INTO buyer_resource_owners VALUES(?,?,?)').run(kind,id,buyerId);}
  assertResource(buyerId:string,kind:'RUN'|'SESSION'|'VERIFICATION',id:string){const row=this.db().prepare('SELECT buyer_id FROM buyer_resource_owners WHERE kind=? AND id=?').get(kind,id);if(!row||row.buyer_id!==buyerId)throw new Error('RESOURCE_NOT_FOUND');}
+ /**
+  * Local development only: assign leases created while buyer sign-in was off (no owner) to this buyer,
+  * so their runs, results and spending appear in that buyer's dashboard. Owned leases are never moved.
+  */
+ adoptUnownedLeases(buyerId:string){return this.leases.buyerTransaction(()=>Number(this.db().prepare('INSERT INTO buyer_lease_owners(lease_id,buyer_id,revision) SELECT id,?,1 FROM leases WHERE id NOT IN (SELECT lease_id FROM buyer_lease_owners)').run(buyerId).changes));}
  get(buyerId:string,leaseId:string){const revision=this.assertOwner(buyerId,leaseId);return {leaseId,revision,...this.leases.get(leaseId),schedule:this.leases.schedule(leaseId)};}
  list(buyerId:string){return this.db().prepare('SELECT lease_id FROM buyer_lease_owners WHERE buyer_id=?').all(buyerId).flatMap(row=>{try{return [this.get(buyerId,String(row.lease_id))];}catch{return [];}});}
  request(buyerId:string,input:BuyerLeasePolicy,ttlSeconds=300):BuyerApproval {

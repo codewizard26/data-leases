@@ -196,6 +196,8 @@ Enabled mode protects lease and run reads, mutations, event streams, and Parquet
 
 Authorizing a lease first creates a pending approval without enabling payment. Review its exact terms in My dashboard, tick the confirmation and approve. Approval requires the owner session, CSRF, a currently valid Privy token for the same identity, and the unchanged policy hash; only then is the policy activated or revised atomically. This is explicit account confirmation, not proof of personhood. Denial, expired approvals, changed terms, replay, other identities and stale revisions cannot increase authority. Lowering limits, pausing and cancelling require only the owner session. Scheduled runs retain durable policy authorization after browser logout. Settled and unresolved payment commitments remain counted after revisions.
 
+**Local test login (development only).** Set `BUYER_DEV_LOGIN=true` to show a **Use local test login** button in My dashboard. It needs no external identity, works only from `localhost`/`127.0.0.1` origins, and is ignored when `NODE_ENV=production`. Logging in adopts earlier leases (and their runs, results and spending) that were created while sign-in was off and have no owner; leases owned by a Privy buyer are never moved. Turning the flag off invalidates local test sessions.
+
 Direct library callers can explicitly disable buyer authentication for isolated local tests. The runnable gateway always enables buyer protection. Authentication and approval tests use an injected fixture verifier; a live Privy login requires your app credentials. Buyer schemas remain proposed pending contributor signoff.
 
 ## Public and private dashboards

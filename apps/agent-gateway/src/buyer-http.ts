@@ -1,7 +1,7 @@
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import {BuyerApprovalPurposeSchema,BuyerLeasePolicySchema} from '@data-leases/contracts';
 import {BuyerStore} from './buyer-store.js';
-import {BuyerAuth,bearerToken} from './buyer-auth.js';
+import {BuyerAuth,LOCAL_DEV_ISSUER,bearerToken} from './buyer-auth.js';
 
 export class BuyerHttpError extends Error {constructor(readonly status:number,message:string){super(message);}}
 export function requestCookie(request:IncomingMessage,name:string){return request.headers.cookie?.split(';').map(value=>value.trim()).find(value=>value.startsWith(name+'='))?.slice(name.length+1);}
@@ -20,7 +20,7 @@ export class BuyerHttp {
  require(request:IncomingMessage,mutate=false){const session=this.session(request);if(!session)throw new BuyerHttpError(401,'BUYER_AUTH_REQUIRED');if(mutate){try{this.auth.assertCsrf(session,typeof request.headers['x-csrf-token']==='string'?request.headers['x-csrf-token']:undefined);}catch{throw new BuyerHttpError(403,'CSRF_INVALID');}}return session;}
  private privyError(error:unknown):never{const message=error instanceof Error?error.message:'PRIVY_INVALID_TOKEN';if(message==='PRIVY_NOT_CONFIGURED')throw new BuyerHttpError(503,message);if(message==='PRIVY_IDENTITY_MISMATCH')throw new BuyerHttpError(403,message);throw new BuyerHttpError(401,message.startsWith('PRIVY_')?message:'PRIVY_INVALID_TOKEN');}
  async handle(request:IncomingMessage,response:ServerResponse,path:string,baseUrl:string,readBody:()=>Promise<Record<string,unknown>>,json:(status:number,value:unknown)=>void):Promise<boolean>{
-  if(path==='/api/auth/session'&&request.method==='GET'){const session=this.session(request);json(200,{authenticated:this.enabled&&Boolean(session),...(this.enabled&&session?{buyer:{buyerId:session.buyerId},csrfToken:session.csrfToken,expiresAt:session.expiresAt}:{}),auth:{...this.auth.status(),enabled:this.enabled,notice:this.enabled?this.auth.status().notice:'Buyer protection disabled. Local demo only; configure Privy before private use.'}});return true;}
+  if(path==='/api/auth/session'&&request.method==='GET'){const session=this.session(request);json(200,{authenticated:this.enabled&&Boolean(session),...(this.enabled&&session?{buyer:{buyerId:session.buyerId,provider:session.issuer===LOCAL_DEV_ISSUER?'LOCAL_DEV':'PRIVY'},csrfToken:session.csrfToken,expiresAt:session.expiresAt}:{}),auth:{...this.auth.status(),enabled:this.enabled,notice:this.enabled?this.auth.status().notice:'Buyer protection disabled. Local demo only; configure Privy before private use.'}});return true;}
   const authRoute=path.startsWith('/api/auth/'),buyerRoute=path==='/api/buyer/leases'||/^\/api\/(approvals\/[^/]+\/(deny|approve)|leases\/[^/]+\/(budget-requests|reduce))$/.test(path);
   if(!authRoute&&!buyerRoute)return false;
   if(!this.enabled)throw new BuyerHttpError(503,'BUYER_AUTH_DISABLED');
@@ -35,6 +35,17 @@ export class BuyerHttp {
    response.setHeader('Set-Cookie',this.auth.cookie(result.token,result.expiresAt));
    json(200,{authenticated:true,buyer:{buyerId:result.buyerId},csrfToken:result.csrfToken,expiresAt:result.expiresAt});return true;
   }
+  if(path==='/api/auth/dev'){
+   // Local test login: only with BUYER_DEV_LOGIN, outside production, and only from a loopback browser origin.
+   if(!this.auth.devLogin)throw new BuyerHttpError(404,'NOT_FOUND');
+   if(!['127.0.0.1','localhost'].includes(new URL(origin).hostname))throw new BuyerHttpError(403,'ORIGIN_NOT_ALLOWED');
+   const body=await readBody();
+   let result;try{result=this.auth.devSession(body.name,requestCookie(request,'data_leases_buyer'));}catch(error){throw new BuyerHttpError(400,error instanceof Error?error.message:'INVALID_DEV_BUYER_NAME');}
+   // Dev only: earlier records made while sign-in was off have no owner; the local test buyer adopts them.
+   const adoptedLeases=this.buyers.adoptUnownedLeases(result.buyerId);
+   response.setHeader('Set-Cookie',this.auth.cookie(result.token,result.expiresAt));
+   json(200,{authenticated:true,buyer:{buyerId:result.buyerId,provider:'LOCAL_DEV'},csrfToken:result.csrfToken,expiresAt:result.expiresAt,adoptedLeases});return true;
+  }
   const session=this.require(request,true),body=await readBody();
   if(path==='/api/auth/logout'){this.auth.logout(requestCookie(request,'data_leases_buyer')!);response.setHeader('Set-Cookie',this.auth.cookie('',new Date(0).toISOString()));json(200,{authenticated:false});return true;}
   const lease=path.match(/^\/api\/leases\/([^/]+)\/(budget-requests|reduce)$/);
@@ -47,8 +58,9 @@ export class BuyerHttp {
    if(body.policyHash!==approval.policyHash)throw new BuyerHttpError(400,'APPROVAL_TERMS_CHANGED');
    if(approval.status!=='PENDING')throw new BuyerHttpError(409,'APPROVAL_NOT_PENDING');
    if(Date.parse(approval.expiresAt)<=Date.now())throw new BuyerHttpError(409,'APPROVAL_EXPIRED');
-   // Explicit confirmation with a currently valid Privy token for the same identity. Not proof of personhood.
-   await this.auth.confirm(bearerToken(request.headers.authorization),session.buyerId).catch(error=>this.privyError(error));
+   // Explicit confirmation with a currently valid Privy token for the same identity (or a local test buyer
+   // while dev login is enabled). Not proof of personhood.
+   await this.auth.confirm(bearerToken(request.headers.authorization),session).catch(error=>{if(error instanceof Error&&error.message==='DEV_LOGIN_DISABLED')throw new BuyerHttpError(403,error.message);this.privyError(error);});
    this.buyers.complete(session.buyerId,id,{buyerId:session.buyerId,nonce:approval.nonce,purpose:BuyerApprovalPurposeSchema.parse(approval.purpose),policyHash:approval.policyHash},this.cap()??'0');
    this.audit(approval.leaseId,'BUYER_APPROVAL_COMPLETED');
    json(200,{approval:this.buyers.approval(session.buyerId,id)});return true;

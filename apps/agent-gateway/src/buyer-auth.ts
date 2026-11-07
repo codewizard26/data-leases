@@ -4,6 +4,9 @@ import {BuyerSessionStore, type StoredBuyerSession} from './buyer-session-store.
 
 /** Issuer recorded for Privy identities (Privy access tokens use iss="privy.io"). */
 export const PRIVY_ISSUER='privy.io';
+/** Issuer for local development test buyers. Never accepted when dev login is disabled. */
+export const LOCAL_DEV_ISSUER='local-dev';
+const LOCAL_DEV_NAME=/^[a-z0-9-]{1,32}$/;
 
 /** Verifies a Privy access token and returns the Privy user DID. Injected so tests never call Privy. */
 export interface AccessTokenVerifier {verify(accessToken:string):Promise<{userId:string}>}
@@ -48,9 +51,10 @@ export function bearerToken(header:string|string[]|undefined){
  * prove personhood, or verify a provider's answer.
  */
 export class BuyerAuth {
- constructor(readonly store:BuyerSessionStore,readonly verifier?:AccessTokenVerifier,private options:{secureCookies?:boolean}={}){}
+ constructor(readonly store:BuyerSessionStore,readonly verifier?:AccessTokenVerifier,private options:{secureCookies?:boolean;devLogin?:boolean}={}){}
  get configured(){return Boolean(this.verifier);}
- status(){return {provider:'PRIVY' as const,configured:this.configured,notice:this.configured?'Privy sign-in. Application spending limits remain separate.':'Privy app ID and server verification credentials required.'};}
+ get devLogin(){return this.options.devLogin===true;}
+ status(){return {provider:'PRIVY' as const,configured:this.configured,devLogin:this.devLogin,notice:this.configured?'Privy sign-in. Application spending limits remain separate.':'Privy app ID and server verification credentials required.'};}
  private async userId(accessToken:string|undefined){
   if(!this.verifier)throw new Error('PRIVY_NOT_CONFIGURED');
   if(!accessToken)throw new Error('PRIVY_TOKEN_REQUIRED');
@@ -61,15 +65,32 @@ export class BuyerAuth {
   const userId=await this.userId(accessToken);
   return this.store.createSession(PRIVY_ISSUER,userId,Math.floor(Date.now()/1000),previousSessionToken);
  }
- /** Explicit approval confirmation: a currently valid Privy token for the same buyer identity. */
- async confirm(accessToken:string|undefined,buyerId:string){
-  const userId=await this.userId(accessToken);
-  if(!this.store.identityMatches(buyerId,PRIVY_ISSUER,userId))throw new Error('PRIVY_IDENTITY_MISMATCH');
+ /** Local development only: a named test buyer without an external identity provider. */
+ devSession(name:unknown,previousSessionToken?:string){
+  if(!this.devLogin)throw new Error('DEV_LOGIN_DISABLED');
+  const subject=typeof name==='string'&&name?name.trim().toLowerCase():'local-buyer';
+  if(!LOCAL_DEV_NAME.test(subject))throw new Error('INVALID_DEV_BUYER_NAME');
+  return this.store.createSession(LOCAL_DEV_ISSUER,subject,Math.floor(Date.now()/1000),previousSessionToken);
  }
- authenticate(token:string|undefined){return this.store.authenticate(token);}
+ /**
+  * Explicit approval confirmation: a currently valid Privy token for the same buyer identity.
+  * Local test buyers confirm with their session only, and only while dev login is enabled.
+  */
+ async confirm(accessToken:string|undefined,session:StoredBuyerSession){
+  if(session.issuer===LOCAL_DEV_ISSUER){if(!this.devLogin)throw new Error('DEV_LOGIN_DISABLED');return;}
+  const userId=await this.userId(accessToken);
+  if(!this.store.identityMatches(session.buyerId,PRIVY_ISSUER,userId))throw new Error('PRIVY_IDENTITY_MISMATCH');
+ }
+ /** Sessions from local test buyers stop working as soon as dev login is disabled. */
+ authenticate(token:string|undefined){const session=this.store.authenticate(token);return session?.issuer===LOCAL_DEV_ISSUER&&!this.devLogin?undefined:session;}
  logout(token:string){this.store.revoke(token);}
  assertCsrf(session:StoredBuyerSession,token:string|undefined){if(!token||token.length!==session.csrfToken.length||!timingSafeEqual(Buffer.from(token),Buffer.from(session.csrfToken)))throw new Error('CSRF_INVALID');}
  cookie(token:string,expiresAt:string){return 'data_leases_buyer='+token+'; Path=/; HttpOnly; SameSite=Lax; Expires='+new Date(expiresAt).toUTCString()+(this.options.secureCookies===false?'':'; Secure');}
+}
+
+/** Local test login: explicit opt-in, never in production. */
+export function devLoginFromEnv(environment:Record<string,string|undefined>=process.env){
+ return environment.NODE_ENV!=='production'&&environment.BUYER_DEV_LOGIN==='true';
 }
 
 /** Secure cookies everywhere except an explicit, non-production loopback development opt-out. */

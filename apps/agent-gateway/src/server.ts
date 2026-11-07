@@ -1,7 +1,7 @@
 import {publicAnalytics} from './public-analytics.js';
 import {BuyerHttp,BuyerHttpError} from './buyer-http.js';
 import {BuyerStore} from './buyer-store.js';
-import {BuyerAuth,privyConfigFromEnv,privyVerifier,secureCookiesFromEnv} from './buyer-auth.js';
+import {BuyerAuth,devLoginFromEnv,privyConfigFromEnv,privyVerifier,secureCookiesFromEnv} from './buyer-auth.js';
 import {BuyerSessionStore} from './buyer-session-store.js';
 import {AnalysisPersonaSchema,ANALYSIS_REQUIREMENTS,MeasurementIdsSchema} from '@data-leases/contracts';
 import {registryOffers,syncRegistryOffers,registryServiceHistory,type MarketplaceQueries} from './arkiv-marketplace.js';
@@ -108,7 +108,7 @@ export async function startGateway(options: GatewayOptions = {}) {
   const leaseStore=new LeaseStore(resolve(directory,'leases.sqlite'));
   const buyerSessions=options.buyerAuth?undefined:new BuyerSessionStore(resolve(directory,'buyer-auth.sqlite'));
   const privyConfig=privyConfigFromEnv();
-  const buyerAuth=options.buyerAuth??new BuyerAuth(buyerSessions!,privyConfig?privyVerifier(privyConfig):undefined,{secureCookies:secureCookiesFromEnv()});
+  const buyerAuth=options.buyerAuth??new BuyerAuth(buyerSessions!,privyConfig?privyVerifier(privyConfig):undefined,{secureCookies:secureCookiesFromEnv(),devLogin:devLoginFromEnv()});
   const buyers=new BuyerStore(leaseStore);
   const buyerHttp=new BuyerHttp(buyerAuth,buyers,options.buyerAuthEnabled??(process.env.BUYER_AUTH_ENABLED==='true'||buyerAuth.configured),()=>getPaymentSetup().maxTinybars,(leaseId,status)=>scheduleEvent(leaseId,status,{}));
   const verificationClient=options.verificationClient??new RunVerificationClient();

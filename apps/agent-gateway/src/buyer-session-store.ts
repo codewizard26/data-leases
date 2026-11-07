@@ -7,7 +7,7 @@ import {dirname} from 'node:path';
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 export const sessionSecret=()=>randomBytes(32).toString('base64url');
 export const SESSION_TTL_MS=8*3600_000;
-export interface StoredBuyerSession extends BuyerSession {authTime:number;identityHash:string}
+export interface StoredBuyerSession extends BuyerSession {authTime:number;identityHash:string;issuer?:string}
 
 /**
  * Private buyer identity and session storage. The identity provider subject (for example a Privy DID)
@@ -30,7 +30,7 @@ export class BuyerSessionStore {
    this.db.prepare('INSERT OR IGNORE INTO buyer_identities VALUES(?,?)').run(identityHash,randomUUID());
    const buyerId=String(this.db.prepare('SELECT buyer_id FROM buyer_identities WHERE identity_hash=?').get(identityHash)!.buyer_id);
    const token=sessionSecret();
-   const session:StoredBuyerSession={buyerId,identityHash,authTime,csrfToken:sessionSecret(),expiresAt:new Date(this.now()+SESSION_TTL_MS).toISOString()};
+   const session:StoredBuyerSession={buyerId,identityHash,issuer,authTime,csrfToken:sessionSecret(),expiresAt:new Date(this.now()+SESSION_TTL_MS).toISOString()};
    this.db.prepare('DELETE FROM buyer_sessions WHERE expires_at<=?').run(this.now());
    if(previousToken)this.db.prepare('DELETE FROM buyer_sessions WHERE token_hash=?').run(hash(previousToken));
    this.db.prepare('INSERT INTO buyer_sessions VALUES(?,?,?)').run(hash(token),JSON.stringify(session),Date.parse(session.expiresAt));

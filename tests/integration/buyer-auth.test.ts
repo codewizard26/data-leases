@@ -26,8 +26,8 @@ describe('Privy buyer authentication',()=>{
    await expect(auth.exchange(undefined)).rejects.toThrow('PRIVY_TOKEN_REQUIRED');
    await expect(auth.exchange('forged-token-value-123456')).rejects.toThrow('PRIVY_INVALID_TOKEN');
    const alice=await auth.exchange(token('alice'));await auth.exchange(token('mallory'));
-   await auth.confirm(token('alice'),alice.buyerId);
-   await expect(auth.confirm(token('mallory'),alice.buyerId)).rejects.toThrow('PRIVY_IDENTITY_MISMATCH');
+   await auth.confirm(token('alice'),alice);
+   await expect(auth.confirm(token('mallory'),alice)).rejects.toThrow('PRIVY_IDENTITY_MISMATCH');
    const unconfigured=new BuyerAuth(store);expect(unconfigured.status().configured).toBe(false);await expect(unconfigured.exchange(token('alice'))).rejects.toThrow('PRIVY_NOT_CONFIGURED');
   }finally{store.close();}
  });
