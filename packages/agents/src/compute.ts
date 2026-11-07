@@ -1,5 +1,8 @@
+import {ClaudeComputeAdapter} from './claude-compute.js';
+export {ClaudeComputeAdapter} from './claude-compute.js';
 /** Server-only inference boundary. Generated text never authorizes economic actions. */
 export interface ComputeInput {
+  jsonMode?: boolean;
   messages: ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }>;
 }
 export interface ComputeOutput {
@@ -44,7 +47,7 @@ class ChatCompletionAdapter implements ComputeAdapter {
       const response = await this.fetcher(this.options.endpoint, {
         method: 'POST', redirect: 'error', signal: controller.signal,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.options.apiKey}` },
-        body: JSON.stringify({ model: this.options.model, messages: input.messages, max_tokens: this.options.maxTokens, temperature: 0 }),
+        body: JSON.stringify({ model: this.options.model, messages: input.messages, max_tokens: input.jsonMode && this.options.provider === 'OPENROUTER' ? 2048 : this.options.maxTokens, temperature: 0, ...(input.jsonMode ? { response_format: { type: 'json_object' }, ...(this.options.provider === 'OPENROUTER' ? { reasoning: { exclude: true } } : {}) } : {}) }),
       });
       if (!response.ok) throw new Error(`COMPUTE_HTTP_${response.status}`);
       const reader = response.body?.getReader();
@@ -109,6 +112,7 @@ export function createComputeAdapter(environment: Record<string, string | undefi
   const provider = environment.COMPUTE_PROVIDER ?? 'mock';
   if (provider === 'mock') return new MockComputeAdapter();
   if (provider === 'openrouter') return new OpenRouterComputeAdapter({ apiKey: environment.OPENROUTER_API_KEY ?? '', model: environment.OPENROUTER_MODEL ?? 'openrouter/free' });
+  if (provider === 'claude') return new ClaudeComputeAdapter({apiKey:environment.ANTHROPIC_API_KEY??environment.CLAUDE_API_KEY??'',model:environment.ANTHROPIC_MODEL??'claude-sonnet-5-5'});
   if (provider !== '0g') throw new Error('COMPUTE_PROVIDER_NOT_IMPLEMENTED');
   return new ZeroGComputeAdapter({
     baseUrl: environment.ZERO_G_BASE_URL ?? '',

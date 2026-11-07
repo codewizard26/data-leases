@@ -2,7 +2,7 @@
 
 `ComputeAdapter.generate` is the server-only boundary for optional text generation. The current implementations are `MockComputeAdapter` and `ZeroGComputeAdapter`. A future Claude adapter implements the same interface; selecting `claude` currently fails explicitly.
 
-Generated text is advisory. It cannot select provider URLs, change budgets, accept quotes, authorize payments, or assert CRE verification. Do not persist raw prompts or credentials in conversation events.
+Generated text cannot select provider URLs, change budgets, authorize payments, or assert CRE verification. In AI negotiation mode, separate buyer and provider prompts propose structured price actions; deterministic guards validate each action before it becomes a protocol message. Do not persist raw prompts or credentials in conversation events.
 
 ## 0G Direct configuration
 
@@ -41,4 +41,4 @@ pnpm exec vitest run packages/agents/tests/compute.test.ts
 
 Set `COMPUTE_PROVIDER=openrouter`, `OPENROUTER_API_KEY`, and optionally `OPENROUTER_MODEL` in the ignored root `.env`. The model defaults to `openrouter/free`; explicit models must end in `:free`. Paid models are rejected. Requests use the fixed OpenRouter endpoint with a 60-second timeout, a 1,024-token output cap, bounded response size, and sanitized errors. Free routing may select a different model for each request and remains subject to provider capacity and account quotas.
 
-Run `pnpm dev` to load `.env` and start the local console at `http://127.0.0.1:3000` plus two provider processes. The AI panel submits prompts to OpenRouter. The negotiation panel shows actual deterministic A2A turns independently of inference. No secrets are sent to the browser. Only one AI request runs at a time; rate limits are reported without automatic retry loops.
+Run `pnpm dev` to load `.env` and start the local console at `http://127.0.0.1:3000` plus two provider processes. The AI panel submits prompts to OpenRouter. With Live mode selected, the negotiation panel uses separate buyer and provider model decisions over A2A. Deterministic mode remains available for offline tests. No secrets are sent to the browser. Only one AI request runs at a time; rate limits are reported without automatic retry loops.

@@ -2,3 +2,17 @@ local-simulation:
   rpcs:
     - chain-name: ethereum-mainnet
       url: https://ethereum-rpc.publicnode.com
+
+local-v2:
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: https://ethereum-rpc.publicnode.com
+local-v2-unavailable:
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: https://ethereum-rpc.publicnode.com
+
+local-services:
+  rpcs:
+    - chain-name: ethereum-mainnet
+      url: https://ethereum-rpc.publicnode.com

@@ -1,12 +1,14 @@
 # Data Leases
 
+Developer 1 updates: [setup and limits](docs/PAYMENTS.md), [audit and Developer 2 handoff](docs/DEVELOPER1_IMPLEMENTATION.md). `pnpm dev` starts the Next.js dashboard on3001 and existing gateway/tools on3000.
+
 Rent the answer. Not the team.
 
 This first implementation slice includes shared Zod contracts, two independently running A2A providers, local discovery, and a buyer that negotiates over HTTP using the official `@a2a-js/sdk` 1.3.0 (A2A 1.0). Optional 0G inference uses a replaceable server-only adapter.
 
 ## Run
 
-Use Node 22 or later and pnpm 10.28.1.
+Use Node 22.13 or later and pnpm 10.28.1.
 
 ```sh
 pnpm install
@@ -37,7 +39,7 @@ A future Claude implementation plugs into `ComputeAdapter.generate` without chan
 
 ## Status and boundaries
 
-All providers are `DEMO_UNTRUSTED`. Current output proves transport and negotiation only. Mock answer delivery and a local development console are available. SSE, durable events, Parquet writing, CRE execution, payments, and Arkiv integration remain pending. Transcripts are in memory/stdout and disappear on restart. Provider state also resets on restart. The local provider has no authentication; it binds only to loopback and is not ready for public hosting.
+All providers are `DEMO_UNTRUSTED`. Current output proves transport and negotiation only. Mock answer delivery and a local development console are available. The Next.js console adds SSE, durable SQLite events, immutable Parquet, bounded leases and Hedera x402 integration. CRE uses the existing simulation adapter. Actual Arkiv integration is supplied by Developer 2. Live Hedera settlement still requires configured, explicitly authorized spending and has not been demonstrated by offline tests. Provider state also resets on restart. The local provider has no authentication; it binds only to loopback and is not ready for public hosting.
 
 Contracts and fixtures are proposed v1 and still need both contributors' review. Read [CLAUDE.md](CLAUDE.md), [SKILLS.md](SKILLS.md), [AGENTS.md](AGENTS.md), and [integration contract](docs/INTEGRATION_CONTRACT.md) before expanding the implementation. CRE-owned paths remain separate.
 
@@ -49,7 +51,7 @@ Configure OpenRouter in ignored `.env` as described in [compute setup](docs/COMP
 pnpm dev
 ```
 
-Open `http://127.0.0.1:3000` for the product landing page and brief plan. Select **Try the agent demo** or visit `http://127.0.0.1:3000/demo`. The local console provides negotiation transcripts and a separate AI prompt panel. Provider processes run on 4101 and 4102. This is a lightweight development console, not the planned Next.js dashboard. SSE, persistence, live data, and verification remain pending.
+Open `http://127.0.0.1:3001` for the landing page, then **Open dashboard** at `/dashboard`. Choose a utility card, select a task and spending limit, compare agent prices, then **Authorize & run once**. The limit is visible beside the action; no separate lease screen is needed. About is at `/about`, and the older diagnostic console is under `/developer`, on the same browser address. Port3000 also serves the landing page; old `/demo` links redirect to `/dashboard`. Provider processes run on4101/4102. See [payment and lease setup](docs/PAYMENTS.md).
 
 ## Mock use cases and communication walkthrough
 
@@ -72,3 +74,17 @@ The teammate CRE branch was reviewed without merging. See [integration review](d
 The fourth question card negotiates LINK token decimals (`ERC20_TOKEN_METADATA`, `link-decimals-v1`). The synthetic answer is 18 decimal places and identifies the LINK contract, without fabricating a block reference. Gateway verification uses the shared `MockVerificationClient`; missing independent evidence returns `MOCK / INCONCLUSIVE`. Unsupported Aave/treasury methods also remain inconclusive. Expand the receipt to inspect individual checks.
 
 All teammate CRE workflow, tooling and saved simulation evidence are included. See [CRE handoff](docs/CRE_HANDOFF.md) for Bun/CLI installation, authentication and fresh simulation reproduction. Recorded CLI results are historical evidence, not verification of a fresh buyer run.
+
+## Model-driven price negotiation
+
+Configure a real compute provider, run `pnpm dev`, and select **Live mode** in the workspace. **Mock mode** is the default and makes no negotiation inference calls. Buyer and seller use separate model prompts in separate processes to propose price actions; integer-budget, seller-floor, round and deadline guards remain authoritative. Model failures do not silently fall back to scripted agreement. The receipt identifies actual model decisions and public explanations by message ID.
+
+Each negotiation can make multiple inference requests and consume the free provider quota. Only one negotiation run is accepted at a time. Financial metric answers remain synthetic and CRE checks remain explicitly MOCK unless supported execution evidence exists. See [AI negotiation](docs/AI_NEGOTIATION.md).
+
+## Run CRE from the browser
+
+Open the LINK decimals workspace and use **Run CRE simulation**. Choose a valid value, tampered value, or block mismatch. The backend prepares a fresh dedicated LINK verification job, invokes the authenticated local CRE CLI, validates its artifact, and returns only the public result. No CLI commands or credentials are required in the browser. One simulation runs at a time, with bounded execution and status polling.
+
+This panel is separate from the selected negotiation mode and from its synthetic answer. Successful output is labeled `CRE_CLI_SIMULATION`, never DON deployment or fresh verification of an unrelated negotiation receipt. CRE CLI/Bun and local authentication must exist on the server.
+
+Recurring execution: choose **Recurring lease** on `/dashboard` to set frequency, expiry, per-run cap and total budget. Discovered agents appear as compact cards. See [recurring lease behavior and safeguards](docs/RECURRING_LEASES.md). Schedules start only after explicit authorization.

@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@data-leases/agents": "workspace:*"
+    "@data-leases/agents": "workspace:*",
+    "@data-leases/cre-adapter": "workspace:*"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

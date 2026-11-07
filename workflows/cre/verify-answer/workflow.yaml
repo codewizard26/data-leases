@@ -5,3 +5,26 @@ local-simulation:
     workflow-path: ./main.ts
     config-path: ./config.json
     secrets-path: ""
+
+local-v2:
+  user-workflow:
+    workflow-name: data-leases-verify-answer-v2-simulation
+  workflow-artifacts:
+    workflow-path: ./main.ts
+    config-path: ./config-v2.json
+    secrets-path: ""
+local-v2-unavailable:
+  user-workflow:
+    workflow-name: data-leases-verify-answer-v2-unavailable
+  workflow-artifacts:
+    workflow-path: ./main.ts
+    config-path: ./config-v2-unavailable.json
+    secrets-path: ""
+
+local-services:
+  user-workflow:
+    workflow-name: data-leases-service-verification-simulation
+  workflow-artifacts:
+    workflow-path: ./main.ts
+    config-path: ../../../data/tmp/cre/services-config.json
+    secrets-path: ""

@@ -6,12 +6,15 @@ import { stripVTControlCharacters } from 'node:util';
 import { VerificationRequestSchema, VerificationResultSchema } from '@data-leases/contracts';
 import { CreSimulationVerificationClient, requestDigest } from '../src/index.js';
 import { readSimulationOutput } from '../src/transcript.js';
+import {acquireSimulationLock} from './simulation-lock.js';
 import { artifactPaths } from './artifact-paths.js';
 
 const root = resolve(import.meta.dirname, '../../..');
 const requestPath = resolve(root, process.argv[2] ?? 'data/tmp/cre/request.json');
 const request = VerificationRequestSchema.parse(JSON.parse(await readFile(requestPath, 'utf8')));
 const cli = process.env.CRE_BIN ?? 'cre';
+const serviceRequest=request.policy.policyId!=='link-decimals-v2'&&(request.questionTemplateId!=='ERC20_TOKEN_METADATA'||request.answer.demoTrustMode==='SIGNED_PROVIDER');
+const target=process.env.CRE_TARGET??(serviceRequest?'local-services':'local-simulation');if(!['local-simulation','local-v2','local-v2-unavailable','local-services'].includes(target))throw new Error('UNSUPPORTED_CRE_TARGET');
 const version = await new Promise<string>((ok, fail) => {
   const child = spawn(cli, ['version'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let text = '';
@@ -20,8 +23,17 @@ const version = await new Promise<string>((ok, fail) => {
   child.on('close', code => code === 0 ? ok(text) : fail(new Error('CRE_VERSION_FAILED')));
 });
 if (!version.includes('v1.39.0')) throw new Error('EXPECTED_CRE_CLI_1_39_0');
+const releaseSimulation=acquireSimulationLock(resolve(root,'data/tmp/cre/simulation.lock'));process.once('exit',releaseSimulation);
+if(target==='local-services'){
+ const providerPublicKeys:Record<string,string>={};
+ for(const providerId of ['provider-a','provider-b','provider-c','provider-d','provider-e','provider-f']){
+  try{const identity=JSON.parse(await readFile(resolve(root,'data/tmp/provider-keys',providerId+'.public.json'),'utf8'));if(identity.providerId===providerId&&identity.scheme==='ed25519'&&/^[a-f0-9]{64}$/i.test(identity.publicKey))providerPublicKeys[providerId]=identity.publicKey;}catch{/* Missing local trust keys remain UNKNOWN. */}
+ }
+ await mkdir(resolve(root,'data/tmp/cre'),{recursive:true,mode:0o700});
+ await writeFile(resolve(root,'data/tmp/cre/services-config.json'),JSON.stringify({allowedProviderIds:['provider-a','provider-b','provider-c','provider-d','provider-e','provider-f'],providerPublicKeys}),{mode:0o600});
+}
 const capture = await new Promise<{ code: number | null; text: string }>((ok, fail) => {
-  const child = spawn(cli, ['workflow', 'simulate', 'verify-answer', '--target', 'local-simulation',
+  const child = spawn(cli, ['workflow', 'simulate', 'verify-answer', '--target', target,
     '--non-interactive', '--trigger-index', '0', '--http-payload', requestPath],
   { cwd: resolve(root, 'workflows/cre'), stdio: ['ignore', 'pipe', 'pipe'] });
   let text = '';
