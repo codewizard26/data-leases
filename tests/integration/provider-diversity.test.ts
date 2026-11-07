@@ -1,15 +1,15 @@
 import {expect,test} from 'vitest';
 import {startProvider,negotiate,HEDERA_CURRENCY,PROVIDER_PROFILES,providerRates,providerComputeEnvironment} from '../../packages/agents/src/index.js';
 import {providerOffers} from '../../apps/agent-gateway/src/provider-directory.js';
-test('six separately addressable providers publish different rates for the same task and a different cheapest agent by task',async()=>{
+test('ten separately addressable providers publish different rates for the same task and a different cheapest agent by task',async()=>{
  const providers=await Promise.all(PROVIDER_PROFILES.map(profile=>startProvider({port:0,providerId:profile.providerId,askMinor:profile.askMinor,floorMinor:profile.floorMinor,allowUnpaidQuotes:true,utilityRates:providerRates(profile.providerId,{}),profile:{displayName:profile.name,description:profile.tagline,style:profile.style,compute:{provider:'unconfigured',model:'not-configured',available:false}}})));
  try{
-  expect(new Set(providers.map(provider=>provider.baseUrl)).size).toBe(6);
-  for(const [template,prices,cheapest] of [['AAVE_V3_USDC_AVAILABLE_LIQUIDITY',['500','700','950','650','1100','800'],'Scout'],['AAVE_V3_USDC_SUPPLY_APY',['850','600','800','550','1000','650'],'Quill']] as const){
+  expect(new Set(providers.map(provider=>provider.baseUrl)).size).toBe(PROVIDER_PROFILES.length);
+  for(const [template,prices,cheapest] of [['AAVE_V3_USDC_AVAILABLE_LIQUIDITY',['500','700','950','650','1100','800','600','750','1000','550'],'Scout'],['AAVE_V3_USDC_SUPPLY_APY',['850','600','800','550','1000','650','700','900','1200','750'],'Quill']] as const){
    const directory=await providerOffers(providers.map((provider,index)=>({providerId:PROVIDER_PROFILES[index]!.providerId,origin:provider.baseUrl})),template);
-   expect(directory.map(provider=>provider.askMinor)).toEqual(prices);expect(directory.filter(provider=>provider.available)).toHaveLength(6);
+   expect(directory.map(provider=>provider.askMinor)).toEqual(prices);expect(directory.filter(provider=>provider.available)).toHaveLength(PROVIDER_PROFILES.length);
    const quotes=await Promise.all(providers.map((provider,index)=>negotiate({baseUrl:provider.baseUrl,providerId:PROVIDER_PROFILES[index]!.providerId,maxPriceMinor:'2000',questionTemplateId:template,currency:HEDERA_CURRENCY,quoteOnly:true,mode:'MOCK'})));
-   expect(quotes.map(result=>result.status)).toEqual(Array(6).fill('QUOTED'));expect(quotes.map(result=>result.quote?.priceMinor)).toEqual(prices);
+   expect(quotes.map(result=>result.status)).toEqual(Array(PROVIDER_PROFILES.length).fill('QUOTED'));expect(quotes.map(result=>result.quote?.priceMinor)).toEqual(prices);
    expect(directory.toSorted((a,b)=>Number(BigInt(a.askMinor!)-BigInt(b.askMinor!)))[0]!.displayName).toBe(cheapest);
    expect(JSON.stringify(directory)).not.toContain('floorMinor');
   }

@@ -26,11 +26,11 @@ if (!version.includes('v1.39.0')) throw new Error('EXPECTED_CRE_CLI_1_39_0');
 const releaseSimulation=acquireSimulationLock(resolve(root,'data/tmp/cre/simulation.lock'));process.once('exit',releaseSimulation);
 if(target==='local-services'){
  const providerPublicKeys:Record<string,string>={};
- for(const providerId of ['provider-a','provider-b','provider-c','provider-d','provider-e','provider-f']){
+ for(const providerId of ['provider-a','provider-b','provider-c','provider-d','provider-e','provider-f','provider-g','provider-h','provider-i','provider-j']){
   try{const identity=JSON.parse(await readFile(resolve(root,'data/tmp/provider-keys',providerId+'.public.json'),'utf8'));if(identity.providerId===providerId&&identity.scheme==='ed25519'&&/^[a-f0-9]{64}$/i.test(identity.publicKey))providerPublicKeys[providerId]=identity.publicKey;}catch{/* Missing local trust keys remain UNKNOWN. */}
  }
  await mkdir(resolve(root,'data/tmp/cre'),{recursive:true,mode:0o700});
- await writeFile(resolve(root,'data/tmp/cre/services-config.json'),JSON.stringify({allowedProviderIds:['provider-a','provider-b','provider-c','provider-d','provider-e','provider-f'],providerPublicKeys}),{mode:0o600});
+ await writeFile(resolve(root,'data/tmp/cre/services-config.json'),JSON.stringify({allowedProviderIds:['provider-a','provider-b','provider-c','provider-d','provider-e','provider-f','provider-g','provider-h','provider-i','provider-j'],providerPublicKeys}),{mode:0o600});
 }
 const capture = await new Promise<{ code: number | null; text: string }>((ok, fail) => {
   const child = spawn(cli, ['workflow', 'simulate', 'verify-answer', '--target', target,

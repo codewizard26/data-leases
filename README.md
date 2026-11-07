@@ -22,7 +22,7 @@ Keep API keys and wallet secrets in the ignored `.env`; never commit them. `pnpm
 - Landing page: http://localhost:3001
 - Dashboard: http://localhost:3001/dashboard
 - Gateway API: http://127.0.0.1:3000
-- Six separate provider services: ports 4101–4106
+- Ten separate provider services: ports 4101–4110
 - Older diagnostic console: http://localhost:3001/developer
 
 Check **Connections** before attempting a purchase. Payments require a funded buyer account, configured merchant recipients and an active spending mandate. CRE CLI simulation requires its local runtime and authentication. Arkiv discovery/publication requires configured access and publisher settings. See [payment setup](docs/PAYMENTS.md), [provider setup](docs/PROVIDER_DIVERSITY.md), [compute setup](docs/COMPUTE.md) and [CRE setup](docs/CRE_HANDOFF.md).
@@ -37,7 +37,7 @@ Select a service in the dashboard, then check only the measurements you need, su
 
 ### 2. Compare agents
 
-Open **Compare agents** to inspect fixed bundle totals and provider details. Six local provider profiles offer different task-specific tariffs:
+Open **Compare agents** to inspect fixed bundle totals and provider details. Ten local provider profiles offer different task-specific tariffs:
 
 | Provider | Port | Pricing style | USDC liquidity starting ask | USDC supply APY starting ask |
 | --- | --- | --- | ---: | ---: |
@@ -47,6 +47,10 @@ Open **Compare agents** to inspect fixed bundle totals and provider details. Six
 | Quill | 4104 | Flexible | 650 | 550 |
 | Beacon | 4105 | Firm | 1,100 | 1,000 |
 | Meridian | 4106 | Balanced | 800 | 650 |
+| Harbor | 4107 | Flexible | 600 | 700 |
+| Ember | 4108 | Balanced | 750 | 900 |
+| Vertex | 4109 | Firm | 1,000 | 1,200 |
+| Nova | 4110 | Flexible | 550 | 750 |
 
 Checkboxes select the measurements in your bundle. The total is the sum of the selected item prices. One request makes one x402 payment to one provider; each measurement retains its own verification result. Changing the selection requires selecting a provider and a matching mandate again.
 

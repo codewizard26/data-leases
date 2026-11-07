@@ -51,7 +51,7 @@ export default function Dashboard(){
  const [price,setPrice]=useState('500'),[freshness,setFreshness]=useState(300),[rounds,setRounds]=useState(3),[expiresAt,setExpiresAt]=useState(''),[totalBudget,setTotalBudget]=useState('5000');
  const [mandates,setMandates]=useState<Mandate[]>([]),[selectedSellerId,setSelectedSellerId]=useState<string>(),[offersRevision,setOffersRevision]=useState(0);
  const requestInFlight=useRef(false);
- const [providerOffers,setProviderOffers]=useState<ProviderOffer[]>([]),[selectedProviderIds,setSelectedProviderIds]=useState(['provider-a','provider-b','provider-c','provider-d','provider-e','provider-f']);
+ const [providerOffers,setProviderOffers]=useState<ProviderOffer[]>([]),[selectedProviderIds,setSelectedProviderIds]=useState(['provider-a','provider-b','provider-c','provider-d','provider-e','provider-f','provider-g','provider-h','provider-i','provider-j']);
  const [,setProviders]=useState<Provider[]>([]),[events,setEvents]=useState<ConversationEvent[]>([]),[run,setRun]=useState<Run>(),[history,setHistory]=useState<Run[]>([]),[leases,setLeases]=useState<ScheduledLease[]>([]),[parquet,setParquet]=useState<ConversationEvent[]>([]);
  const [notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[,setRequestChanged]=useState(false),[setup,setSetup]=useState<PaymentSetup>(),[authorizedLeaseId,setAuthorizedLeaseId]=useState<string>();
  const [sourceStatuses,setSourceStatuses]=useState<SourceStatus[]>([]);
