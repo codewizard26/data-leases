@@ -44,7 +44,8 @@ describe('compute adapters', () => {
   });
   test('environment factory defaults to mock and fails closed for unsupported or incomplete providers', () => {
     expect(createComputeAdapter({})).toBeInstanceOf(MockComputeAdapter);
-    expect(() => createComputeAdapter({ COMPUTE_PROVIDER: 'claude' })).toThrow('COMPUTE_PROVIDER_NOT_IMPLEMENTED');
+    expect(() => createComputeAdapter({ COMPUTE_PROVIDER: 'claude' })).toThrow('COMPUTE_INVALID_CONFIG');
+    expect(() => createComputeAdapter({ COMPUTE_PROVIDER: 'unknown' })).toThrow('COMPUTE_PROVIDER_NOT_IMPLEMENTED');
     expect(() => createComputeAdapter({ COMPUTE_PROVIDER: '0g' })).toThrow('COMPUTE_INVALID_CONFIG');
   });
 });

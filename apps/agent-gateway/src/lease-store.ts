@@ -3,8 +3,8 @@ import {generateKeyPairSync, createPrivateKey, createPublicKey, sign, verify} fr
 import {mkdirSync,readFileSync,writeFileSync,existsSync} from 'node:fs';
 import {dirname} from 'node:path';
 import {z} from 'zod';
-const SchedulePolicySchema=z.object({intervalSeconds:z.number().int().min(60).max(604800),mode:z.enum(['DIRECT_URL','LOCAL_REGISTRY','ARKIV','HYBRID']),directCardUrl:z.string().url().optional()}).strict().refine(value=>value.mode!=='DIRECT_URL'||Boolean(value.directCardUrl),{message:'DIRECT_URL requires a card URL'});
-export const LeasePolicySchema=z.object({leaseId:z.string().uuid(),questionTemplateId:z.string().min(1),currency:z.literal('hedera:testnet/HBAR'),providerIds:z.array(z.string().min(1)).min(1),perRequestTinybars:z.string().regex(/^[1-9][0-9]{0,18}$/),totalTinybars:z.string().regex(/^[1-9][0-9]{0,18}$/),expiresAt:z.string().datetime(),maxAgeSeconds:z.number().int().min(1).max(86400),maxRounds:z.number().int().min(2).max(3),paymentsAuthorized:z.boolean().default(true),maxRuns:z.number().int().min(1).max(1000).optional(),schedule:SchedulePolicySchema.optional()}).strict();
+import {BuyerLeasePolicySchema} from '@data-leases/contracts';
+export const LeasePolicySchema=BuyerLeasePolicySchema;
 export interface ScheduleRow {leaseId:string;state:string;nextRunAt:number;activeRunId:string|null;lastRunId:string|null;reason:string|null}
 export type LeasePolicy=z.infer<typeof LeasePolicySchema>;
 /** Durable reservations count uncertain and completed payments against the signed total. */
@@ -35,6 +35,7 @@ export class LeaseStore {
  save(runId:string,value:unknown){this.db.prepare('UPDATE runs SET value=? WHERE id=?').run(JSON.stringify(value),runId);}
  run(runId:string):unknown{const r=this.db.prepare('SELECT value FROM runs WHERE id=?').get(runId);return r?JSON.parse(String(r.value)):undefined;}
  runs():unknown[]{return this.db.prepare('SELECT value FROM runs ORDER BY rowid DESC LIMIT 100').all().map(r=>JSON.parse(String(r.value)));}
+ mandates(){return this.db.prepare('SELECT id FROM leases ORDER BY rowid DESC').all().map(row=>this.get(String(row.id))).filter(lease=>lease.policy.paymentsAuthorized&&!lease.policy.schedule&&lease.policy.maxRuns!==1);}
  schedules():ScheduleRow[]{return this.db.prepare('SELECT lease_id AS leaseId,state,next_run_at AS nextRunAt,active_run_id AS activeRunId,last_run_id AS lastRunId,reason FROM lease_schedules ORDER BY rowid DESC').all() as unknown as ScheduleRow[];}
  schedule(id:string){return this.schedules().find(row=>row.leaseId===id);}
  scheduleState(id:string,state:string,reason:string){this.db.prepare('UPDATE lease_schedules SET state=?,reason=? WHERE lease_id=?').run(state,reason,id);}
@@ -52,5 +53,20 @@ export class LeaseStore {
  claimOccurrence(id:string,now:number,runId:string){return Number(this.db.prepare("UPDATE lease_schedules SET active_run_id=?,next_run_at=? WHERE lease_id=? AND state='ACTIVE' AND active_run_id IS NULL AND next_run_at<=?").run(runId,now+this.get(id).policy.schedule!.intervalSeconds*1000,id,now).changes)===1;}
  completeOccurrence(id:string,runId:string,now:number){const row=this.schedule(id);if(!row||row.activeRunId!==runId)return;const interval=this.get(id).policy.schedule!.intervalSeconds*1000;this.db.prepare('UPDATE lease_schedules SET last_run_id=?,active_run_id=NULL,next_run_at=? WHERE lease_id=? AND active_run_id=?').run(runId,row.nextRunAt<=now?now+interval:row.nextRunAt,id,runId);}
  fundedRuns(id:string){return Number(this.db.prepare("SELECT COUNT(*) AS count FROM reservations WHERE lease_id=? AND status!='RELEASED'").get(id)?.count);}
+ /** Internal buyer authorization integration. All operations use this connection's transaction. */
+ buyerDatabase(){return this.db;}
+ buyerTransaction<T>(work:()=>T):T{this.db.exec('BEGIN IMMEDIATE');try{const result=work();this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}}
+ buyerApplyPolicy(input:LeasePolicy,activate:boolean){
+  const policy=LeasePolicySchema.parse(input);
+  if(Date.parse(policy.expiresAt)<=Date.now()||BigInt(policy.perRequestTinybars)>BigInt(policy.totalTinybars)||(policy.schedule&&(!policy.paymentsAuthorized||policy.maxRuns===1)))throw new Error('INVALID_LEASE_POLICY');
+  const existing=this.db.prepare('SELECT id FROM leases WHERE id=?').get(policy.leaseId);
+  if(existing){const old=this.get(policy.leaseId);if(BigInt(policy.totalTinybars)<BigInt(old.reservedTinybars))throw new Error('CAP_BELOW_COMMITTED_SPEND');}
+  const value=JSON.stringify(policy),signature=sign(null,Buffer.from(value),this.privateKey).toString('base64');
+  if(existing)this.db.prepare('UPDATE leases SET policy=?,signature=? WHERE id=?').run(value,signature,policy.leaseId);
+  else {if(!activate)throw new Error('LEASE_NOT_FOUND');this.db.prepare('INSERT INTO leases VALUES(?,?,?,1)').run(policy.leaseId,value,signature);}
+  if(policy.schedule)this.db.prepare("INSERT OR IGNORE INTO lease_schedules VALUES(?,'ACTIVE',?,NULL,NULL,NULL)").run(policy.leaseId,Date.now());
+  else this.db.prepare('DELETE FROM lease_schedules WHERE lease_id=?').run(policy.leaseId);
+  return this.get(policy.leaseId);
+ }
  close(){this.db.close();}
 }

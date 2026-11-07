@@ -4,7 +4,8 @@ import {
   type VerificationClient, type VerificationRequest, type VerificationResult,
 } from '@data-leases/contracts';
 import { evaluateVerification, type VerificationEvidence } from './policy.js';
-import {requiredChecksForRequest} from './policy-v2.js';
+import {requiredChecksForRequest} from './required-checks.js';
+import {evaluateServiceVerification} from './service-policy.js';
 import { canonical, requestDigest } from './digest.js';
 export { requestDigest } from './digest.js';
 
@@ -32,7 +33,7 @@ export class MockVerificationClient extends MemoryClient {
   constructor(private readonly evidence: VerificationEvidence = {}, private readonly clock: () => string = () => new Date().toISOString()) { super(); }
   async submit(input: VerificationRequest) {
     const job = this.register(input);
-    job.result ??= evaluateVerification(job.request, this.evidence, 'MOCK', this.clock());
+    job.result ??= job.request.questionTemplateId==='ERC20_TOKEN_METADATA'?evaluateVerification(job.request, this.evidence, 'MOCK', this.clock()):evaluateServiceVerification(job.request, {}, 'MOCK', this.clock());
     return { verificationId: job.request.verificationId, state: 'COMPLETED' as const };
   }
 }
@@ -59,7 +60,8 @@ export class CreSimulationVerificationClient extends MemoryClient {
     if (!lines.includes('CLI_EXIT_CODE:0') || !lines.includes('Execution finished signal received')) throw new Error('SIMULATION_NOT_SUCCESSFUL');
     const returned = lines.find(line => line.startsWith('CLI_RETURNED_RESULT:'));
     if (!returned || canonical(JSON.parse(returned.slice('CLI_RETURNED_RESULT:'.length))) !== canonical(result)) throw new Error('CLI_RETURNED_RESULT_MISMATCH');
-    if (requiredChecksForRequest(request).some(id => !result.checks.some(c => c.checkId === id)) ||
+    const required=requiredChecksForRequest(request);
+    if (required.some(id => !result.checks.some(c => c.checkId === id)) ||
       new Set(result.checks.map(c => c.checkId)).size !== result.checks.length) throw new Error('MISSING_REQUIRED_CHECKS');
     const status = result.checks.some(c => c.status === 'FAIL') ? 'REJECTED' : result.checks.some(c => c.status === 'UNKNOWN') ? 'INCONCLUSIVE' : 'ACCEPTED';
     if (status !== result.status) throw new Error('INVALID_ACCEPTANCE');

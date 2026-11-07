@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {DiscoveryQuerySchema,VerificationRequestSchema,VerificationResultSchema,type ArkivClient,type VerificationClient,type DiscoveredAgent,type NegotiationMessage,type AnswerEnvelope,type VerificationResult,type ConversationEvent,type RunReceiptReference,type ComputationResult} from '@data-leases/contracts';
 import {DirectUrlDiscovery,LocalRegistryDiscovery,type LocalDiscoveryPolicy} from '@data-leases/discovery';
-import {negotiate,scenarioForTemplate,HEDERA_CURRENCY,type PaymentQuote} from '@data-leases/agents';
+import {negotiate,scenarioForTemplate,HEDERA_CURRENCY,type NegotiationStrategy,type PaymentQuote} from '@data-leases/agents';
 import {EventStore} from '@data-leases/event-store';
 import {LeaseStore} from './lease-store.js';
 export const RunInputSchema=z.object({runId:z.string().uuid(),leaseId:z.string().uuid(),mode:z.enum(['DIRECT_URL','LOCAL_REGISTRY','ARKIV','HYBRID']),directCardUrl:z.string().url().optional()}).strict();
@@ -15,7 +15,7 @@ export class RunOrchestrator {
  readonly events=new EventEmitter();
  private publicationInFlight=new Map<string,Promise<void>>();
  private active=new Map<string,Promise<void>>();
- constructor(private readonly config:{store:EventStore;leases:LeaseStore;providers:ProviderConnection[];verification:VerificationClient;arkiv?:ArkivClient;payment:(input:{quote:PaymentQuote;url:string;payTo:string})=>Promise<PaymentResult>;paymentReady:()=>boolean;paymentRecord?:(runId:string)=>{status:string;receipt?:PaymentResult['payment']}|undefined}){
+ constructor(private readonly config:{store:EventStore;leases:LeaseStore;providers:ProviderConnection[];verification:VerificationClient;arkiv?:ArkivClient;liveOnly?:boolean;negotiationMode?:'MOCK'|'LIVE';strategy?:NegotiationStrategy;payment:(input:{quote:PaymentQuote;url:string;payTo:string})=>Promise<PaymentResult>;paymentReady:()=>boolean;paymentRecord?:(runId:string)=>{status:string;receipt?:PaymentResult['payment']}|undefined}){
   for(const prior of this.config.leases.runs() as RunState[]){if(!['COMPLETED','FAILED','VERIFICATION_PENDING','QUOTES_READY'].includes(prior.status)){if(prior.paymentStatus==='IN_PROGRESS'){const record=this.config.paymentRecord?.(prior.runId);prior.paymentStatus=record?.receipt?'SETTLED':'UNKNOWN';if(record?.receipt)prior.payment=record.receipt;this.config.leases.mark(prior.runId,record?.receipt?'SETTLED':'UNKNOWN');}prior.error='RUN_INTERRUPTED_RECONCILE_REQUIRED';prior.status='FAILED';this.save(prior);}}
  }
  get(runId:string):RunState|undefined{return this.config.leases.run(runId) as RunState|undefined;}
@@ -52,22 +52,23 @@ export class RunOrchestrator {
  async wait(runId:string){await this.active.get(runId);return this.get(runId);}
  private async execute(run:RunState,input:z.infer<typeof RunInputSchema>){let reserved=false;let submitted=false;
   try{
+   if(this.config.liveOnly&&(this.config.negotiationMode!=='LIVE'||!this.config.strategy))throw new Error('LIVE_AI_NOT_CONFIGURED');
    const {policy}=this.config.leases.get(run.leaseId);
    this.emit(run,'DISCOVERY_STARTED','DISCOVERING',{mode:input.mode,questionTemplateId:policy.questionTemplateId});
    const discovered=await this.discover({schemaVersion:'1.0.0',sessionId:run.sessionId,mode:input.mode,directCardUrl:input.directCardUrl,questionTemplateId:policy.questionTemplateId,maxPriceMinor:policy.perRequestTinybars,currency:policy.currency,maxAgeSeconds:policy.maxAgeSeconds,requestedAt:new Date().toISOString()});
    run.providers=discovered.filter(p=>policy.providerIds.includes(p.providerId));this.save(run);for(const p of run.providers)this.emit(run,'DISCOVERY_RESULT','DISCOVERED',p,p.providerId);
    if(!run.providers.length)throw new Error('NO_ELIGIBLE_PROVIDERS');run.status='NEGOTIATING';this.save(run);
    const results=await Promise.all(run.providers.map(async provider=>{const connection=this.config.providers.find(p=>p.providerId===provider.providerId)!;try{
-    const result=await negotiate({baseUrl:connection.origin,providerId:connection.providerId,maxPriceMinor:policy.perRequestTinybars,questionTemplateId:policy.questionTemplateId,currency:HEDERA_CURRENCY,mode:'MOCK',deferAcceptance:true,maxRounds:policy.maxRounds,maxAgeSeconds:policy.maxAgeSeconds,sessionId:run.sessionId,runId:run.runId,deadlineAt:new Date(Math.min(Date.parse(policy.expiresAt),Date.now()+180000)).toISOString(),onMessage:(message,direction)=>{this.emit(run,direction==='OUT'?'A2A_SENT':'A2A_RECEIVED',message.action,message,provider.providerId,message,direction);if(direction==='IN'&&message.action==='PROPOSE')this.emit(run,'QUOTE','RECEIVED',message,provider.providerId,message);}});
+    const result=await negotiate({baseUrl:connection.origin,providerId:connection.providerId,maxPriceMinor:policy.perRequestTinybars,questionTemplateId:policy.questionTemplateId,currency:HEDERA_CURRENCY,mode:this.config.negotiationMode??'MOCK',strategy:this.config.strategy,deferAcceptance:true,maxRounds:policy.maxRounds,maxAgeSeconds:policy.maxAgeSeconds,sessionId:run.sessionId,runId:run.runId,deadlineAt:new Date(Math.min(Date.parse(policy.expiresAt),Date.now()+180000)).toISOString(),onMessage:(message,direction)=>{this.emit(run,direction==='OUT'?'A2A_SENT':'A2A_RECEIVED',message.action,message,provider.providerId,message,direction);if(direction==='IN'&&message.action==='PROPOSE')this.emit(run,'QUOTE','RECEIVED',message,provider.providerId,message);}});
     this.emit(run,'NEGOTIATION_OUTCOME',result.status,{providerId:provider.providerId,status:result.status},provider.providerId);return {connection,result};
    }catch{this.emit(run,'ERROR','PROVIDER_NEGOTIATION_FAILED',{code:'PROVIDER_NEGOTIATION_FAILED'},provider.providerId);return undefined;}}));
-   const offers=results.filter(r=>r?.result.status==='QUOTED'&&r.result.quote?.priceMinor&&BigInt(r.result.quote.priceMinor)<=BigInt(policy.perRequestTinybars)&&Date.parse(r.result.quote.expiresAt)>Date.now());
+   const offers=results.filter(r=>(!policy.paymentsAuthorized||Boolean(r?.connection.payTo))&&r?.result.status==='QUOTED'&&r.result.quote?.priceMinor&&BigInt(r.result.quote.priceMinor)<=BigInt(policy.perRequestTinybars)&&Date.parse(r.result.quote.expiresAt)>Date.now());
    offers.sort((a,b)=>{const delta=BigInt(a!.result.quote!.priceMinor!)-BigInt(b!.result.quote!.priceMinor!);return delta<0n?-1:delta>0n?1:a!.connection.providerId.localeCompare(b!.connection.providerId);});
    const chosen=offers[0];if(!chosen?.result.quote)throw new Error('NO_ACCEPTABLE_QUOTE');
    if(!policy.paymentsAuthorized){run.quote=Object.freeze(structuredClone(chosen.result.quote));run.status='QUOTES_READY';run.paymentStatus='DISABLED_PREVIEW';this.save(run);this.emit(run,'NEGOTIATION_OUTCOME','QUOTES_READY',{selectedQuote:run.quote,notice:'A2A pricing only. No quote accepted and no x402 payment.'});return;}
    if(!this.config.paymentReady())throw new Error('PAYMENT_SETUP_REQUIRED');
    const q=chosen.result.quote;this.config.leases.reserve(run.leaseId,run.runId,chosen.connection.providerId,q.priceMinor!);reserved=true;
-   const accepted=await negotiate({baseUrl:chosen.connection.origin,providerId:chosen.connection.providerId,maxPriceMinor:policy.perRequestTinybars,questionTemplateId:policy.questionTemplateId,currency:HEDERA_CURRENCY,mode:'MOCK',acceptQuote:q,maxRounds:policy.maxRounds,onMessage:(message,direction)=>this.emit(run,direction==='OUT'?'A2A_SENT':'A2A_RECEIVED',message.action,message,chosen.connection.providerId,message,direction)});
+   const accepted=await negotiate({baseUrl:chosen.connection.origin,providerId:chosen.connection.providerId,maxPriceMinor:policy.perRequestTinybars,questionTemplateId:policy.questionTemplateId,currency:HEDERA_CURRENCY,mode:this.config.negotiationMode??'MOCK',strategy:this.config.strategy,acceptQuote:q,maxRounds:policy.maxRounds,onMessage:(message,direction)=>this.emit(run,direction==='OUT'?'A2A_SENT':'A2A_RECEIVED',message.action,message,chosen.connection.providerId,message,direction)});
    if(accepted.status!=='AGREED'||!accepted.paymentRequired||accepted.paymentRequired.payTo!==chosen.connection.payTo)throw new Error('INVALID_ACCEPTED_QUOTE');
    const acceptedMessage=accepted.transcript.at(-1)!;run.quote=Object.freeze(structuredClone(acceptedMessage));run.resourceUrl=accepted.paymentRequired.resourceUrl;run.status='PAYING';run.paymentStatus='IN_PROGRESS';this.save(run);this.emit(run,'QUOTE','ACCEPTED',{quote:run.quote,resourceUrl:run.resourceUrl,paymentNetwork:'hedera:testnet',payTo:chosen.connection.payTo});
    const currentLease=this.config.leases.get(run.leaseId);if(!currentLease.active||Date.parse(currentLease.policy.expiresAt)<=Date.now())throw new Error('LEASE_EXPIRED_OR_CANCELLED');

@@ -17,6 +17,8 @@
     "demo:buyer": "tsx apps/agent-gateway/src/buyer.ts",
     "dev": "node --env-file=.env --import tsx scripts/dev.ts",
     "cre:prepare": "pnpm --filter @data-leases/cre-adapter cre:prepare",
+    "cre:simulate:services": "node --import tsx scripts/simulate-services.ts",
+    "cre:prepare:services": "tsx scripts/prepare-services.ts",
     "cre:simulate": "pnpm --filter @data-leases/cre-adapter cre:simulate",
     "dev:web": "pnpm --filter @data-leases/web dev",
     "parquet:inspect": "tsx scripts/parquet-inspect.ts"

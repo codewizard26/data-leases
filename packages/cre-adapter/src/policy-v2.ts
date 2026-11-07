@@ -41,4 +41,4 @@ export function evaluateVerificationV2(input:VerificationRequest,evidence:Verifi
  }
  return VerificationResultSchema.parse({...base,status:checks.some(check=>check.status==='FAIL')?'REJECTED':checks.some(check=>check.status==='UNKNOWN')?'INCONCLUSIVE':'ACCEPTED',checks});
 }
-export function requiredChecksForRequest(request:VerificationRequest):readonly string[]{return request.policy.policyId===POLICY_V2?[...REQUIRED_CHECK_IDS_V2,...(request.answer.providerSignature||request.answer.demoTrustMode==='SIGNED_PROVIDER'?['PROVIDER_SIGNATURE_VALID']:[])]:REQUIRED_CHECK_IDS;}
+export {requiredChecksForRequest} from './required-checks.js';

@@ -39,3 +39,15 @@ test('a recurring policy cannot be reused for unscheduled manual runs',async()=>
 test('hybrid discovery preserves local providers during an Arkiv outage while Arkiv-only fails explicitly',async()=>{const f=await setup({arkivUnavailable:true});try{const query={schemaVersion:'1.0.0',sessionId:randomUUID(),mode:'HYBRID',questionTemplateId:'ERC20_TOKEN_METADATA',maxPriceMinor:'500',currency:'hedera:testnet/HBAR',maxAgeSeconds:60,requestedAt:new Date().toISOString()};expect(await f.runner.discover(query)).toHaveLength(2);await expect(f.runner.discover({...query,mode:'ARKIV'})).rejects.toThrow('ARKIV_DISCOVERY_UNAVAILABLE');expect(f.attempts).toBe(0);}finally{await f.close();}});
 
 test('private service delivers only one paid metric locally while Parquet and history conceal its value',async()=>{const f=await setup({questionTemplateId:'PRIVATE_AAVE_POSITION_HEALTH_FACTOR',cap:'2000',total:'2000',unverified:true});try{const runId=randomUUID();f.runner.start({runId,leaseId:f.leaseId,mode:'LOCAL_REGISTRY'});const run=(await f.runner.wait(runId))!;expect(run).toMatchObject({status:'COMPLETED',paymentStatus:'SETTLED',verificationStatus:'CRE_CLI_SIMULATION:INCONCLUSIVE',answer:{value:'1840000000000000000'}});const rows=await f.store.inspectParquet(runId);expect(JSON.stringify(rows)).not.toContain(run.answer!.value);expect(rows.find(row=>row.eventType==='ANSWER_DELIVERED')?.payloadJson).toContain('PRIVATE_BUYER_LOCAL_ONLY');const {discloseRun}=await import('../../apps/agent-gateway/src/data-access.js');expect(discloseRun(run,true).answer).toBeUndefined();expect(discloseRun(run).answer?.value).toBe(run.answer!.value);expect(f.attempts).toBe(1);expect(f.published).toBe(0);}finally{await f.close();}});
+
+test('a provider-pinned on-demand mandate pays per explicit request and stops at its shared budget',async()=>{
+ const f=await setup();try{
+  const leaseId=randomUUID();f.leases.authorize({leaseId,questionTemplateId:'ERC20_TOKEN_METADATA',providerIds:['provider-1'],currency:'hedera:testnet/HBAR',perRequestTinybars:'700',totalTinybars:'1400',maxAgeSeconds:60,maxRounds:3,paymentsAuthorized:true,expiresAt:new Date(Date.now()+60000).toISOString()});
+  expect(f.attempts).toBe(0);expect(f.leases.schedule(leaseId)).toBeUndefined();
+  const first=randomUUID(),second=randomUUID();
+  for(const runId of [first,second]){f.runner.start({runId,leaseId,mode:'LOCAL_REGISTRY'});expect(await f.runner.wait(runId)).toMatchObject({paymentStatus:'SETTLED',quote:{fromAgentId:'provider-1',priceMinor:'700'}});}
+  expect(f.attempts).toBe(2);expect(f.leases.get(leaseId).remainingTinybars).toBe('0');
+  f.runner.start({runId:second,leaseId,mode:'LOCAL_REGISTRY'});expect(f.attempts).toBe(2);
+  const third=randomUUID();f.runner.start({runId:third,leaseId,mode:'LOCAL_REGISTRY'});expect(await f.runner.wait(third)).toMatchObject({error:'LEASE_BUDGET_EXCEEDED'});expect(f.attempts).toBe(2);
+ }finally{await f.close();}
+});

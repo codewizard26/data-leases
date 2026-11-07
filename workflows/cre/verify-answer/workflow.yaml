@@ -20,3 +20,11 @@ local-v2-unavailable:
     workflow-path: ./main.ts
     config-path: ./config-v2-unavailable.json
     secrets-path: ""
+
+local-services:
+  user-workflow:
+    workflow-name: data-leases-service-verification-simulation
+  workflow-artifacts:
+    workflow-path: ./main.ts
+    config-path: ../../../data/tmp/cre/services-config.json
+    secrets-path: ""

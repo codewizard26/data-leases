@@ -4,6 +4,18 @@ Developer 1 updates: [setup and limits](docs/PAYMENTS.md), [audit and Developer 
 
 Rent the answer. Not the team.
 
+## World Agent Pass buyer workspace
+
+The dashboard's **Account** view supports World sign-in, owned leases, committed spending, and exact policy approval review. The backend uses OIDC authorization code flow with S256 PKCE, discovery, RS256 signature validation, issuer/audience/nonce checks, fresh authentication, and server-side flow binding. Sandbox identities are test identities; they do not establish production proof of humanity.
+
+Register a client using the [official Agent Pass OIDC guide](https://auth.world.org/docs/guides/oidc). Set `WORLD_CLIENT_ID`, `WORLD_CLIENT_SECRET`, `WORLD_ISSUER`, and the exact registered `WORLD_REDIRECT_URI` in your private environment. Set `WORLD_AUTH_ENABLED=true`. For loopback development only, explicitly set `WORLD_ALLOW_LOCAL_HTTP=true` and use `http://127.0.0.1:3001/api/auth/world/callback`. Use the same browser hostname throughout. Production requires HTTPS and secure cookies. Restart `pnpm dev`, open `/dashboard`, then choose **Account** and sign in.
+
+Enabled mode protects lease and run reads, mutations, event streams, and Parquet history with buyer ownership checks. Session tokens are opaque, hashed in private SQLite storage, expiring, revocable, and carried in HttpOnly cookies. Authenticated mutations require CSRF tokens. Existing unowned demo resources are not adopted by a newly signed-in buyer. Legacy direct checkout is disabled in protected mode; paid execution uses an owned lease.
+
+Authorizing a lease first creates a pending approval without enabling payment. Review its exact terms in Account, confirm, and complete fresh World authentication. Only the verified callback can atomically activate or revise the policy. Denial, expired approvals, altered bindings, replay, and stale revisions cannot increase authority. Lowering limits, pausing, and cancelling require the owner session without another World flow. Scheduled runs retain durable policy authorization after browser logout; logout closes interactive access. Settled and unresolved payment commitments remain counted after revisions.
+
+`WORLD_AUTH_ENABLED=false` without World credentials preserves the existing **unsecured local demo**. It is not a private buyer workspace. Registering credentials also enables protection. Never expose the local demo as a private service. Authentication and approval tests use signed synthetic OIDC fixtures; a real registered-client browser journey and sponsor submission evidence remain pending. Buyer schemas remain proposed pending contributor signoff.
+
 This first implementation slice includes shared Zod contracts, two independently running A2A providers, local discovery, and a buyer that negotiates over HTTP using the official `@a2a-js/sdk` 1.3.0 (A2A 1.0). Optional 0G inference uses a replaceable server-only adapter.
 
 ## Run

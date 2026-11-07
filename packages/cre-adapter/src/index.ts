@@ -7,3 +7,6 @@ export {evaluateVerificationV2,answerSigningBytes,POLICY_V2,REQUIRED_CHECK_IDS_V
 export type {VerificationAuthority} from './policy-v2.js';
 export {DurableCreVerificationClient} from './durable-client.js';
 export type {SimulationExecutor,SimulationArtifact} from './durable-client.js';
+export {SERVICE_POLICIES,SERVICE_CHECKS,serviceFor,evaluateServiceVerification} from './service-policy.js';
+export type {ServiceEvidence} from './service-policy.js';
+export {readPlan,decodeReadPlan,REFERENCE_RPC_URL} from './read-plans.js';

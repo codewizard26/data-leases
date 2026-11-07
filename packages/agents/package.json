@@ -14,6 +14,7 @@
     "@data-leases/contracts": "workspace:*",
     "@x402/core": "2.30.0",
     "@x402/hedera": "2.30.0",
-    "express": "5.3.0"
+    "express": "5.3.0",
+    "zod": "3.25.76"
   }
 }

@@ -1,3 +1,5 @@
+import {ClaudeComputeAdapter} from './claude-compute.js';
+export {ClaudeComputeAdapter} from './claude-compute.js';
 /** Server-only inference boundary. Generated text never authorizes economic actions. */
 export interface ComputeInput {
   jsonMode?: boolean;
@@ -110,6 +112,7 @@ export function createComputeAdapter(environment: Record<string, string | undefi
   const provider = environment.COMPUTE_PROVIDER ?? 'mock';
   if (provider === 'mock') return new MockComputeAdapter();
   if (provider === 'openrouter') return new OpenRouterComputeAdapter({ apiKey: environment.OPENROUTER_API_KEY ?? '', model: environment.OPENROUTER_MODEL ?? 'openrouter/free' });
+  if (provider === 'claude') return new ClaudeComputeAdapter({apiKey:environment.ANTHROPIC_API_KEY??environment.CLAUDE_API_KEY??'',model:environment.ANTHROPIC_MODEL??'claude-sonnet-5-5'});
   if (provider !== '0g') throw new Error('COMPUTE_PROVIDER_NOT_IMPLEMENTED');
   return new ZeroGComputeAdapter({
     baseUrl: environment.ZERO_G_BASE_URL ?? '',

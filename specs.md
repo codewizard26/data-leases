@@ -157,7 +157,7 @@ Run a successful `cre workflow simulate` or current documented CRE CLI equivalen
 
 ### 3.4 One project, three prizes
 
-Only target **Hedera x402 + Arkiv Build on Arkiv (from scratch) + Chainlink CRE workflow**. Do not claim qualification for Hedera ATS (no securities issuance), Chainlink CCIP (no CCIP state change), or Arkiv Mirror (unless separately building a licensed, reproducible dataset mirror and intentionally choosing that instead of the Build track).
+The primary submission targets are **Hedera x402 + Arkiv Build on Arkiv (from scratch) + Chainlink CRE workflow**. World ID Agent Pass is an explicitly requested product extension for buyer sessions and sensitive spending approvals; see Section 6.6. Before submitting to World, choose which primary target to replace if retaining the repository's three-sponsor submission limit. Adding this integration does not itself change that limit or establish prize qualification. Do not claim qualification for Hedera ATS (no securities issuance), Chainlink CCIP (no CCIP state change), or Arkiv Mirror (unless separately building a licensed, reproducible dataset mirror and intentionally choosing that instead of the Build track).
 
 ---
 
@@ -414,6 +414,56 @@ Let `p` be the delivered report price; `u` provider payout ratio; `n` completed 
 | CRE simulation fails | Yes | Inconclusive | Retry verification without repeating payment |
 | Arkiv write fails | Yes | Pending publication | Durable outbox and idempotent Arkiv write |
 | Lease expires | Depends on earlier runs | Expired | Disable future runs; show remaining funds accurately |
+
+---
+
+### 6.6 Buyer sessions and World-backed spending approvals
+
+**Requested scope extension; implementation and prize evidence remain pending.** Buyers need a persistent private workspace to manage their own leases, spending, payment reconciliation and budget changes. World ID Agent Pass supplies a human verification step for consequential actions. The application remains responsible for session security, resource ownership and payment authorization; human verification alone is not a wallet signature, proof of funds, private-data access entitlement or guarantee of answer correctness.
+
+**Product promise:** A person authorizes a bounded spending policy; their agents operate autonomously within it. A request to increase authority returns to that person for approval. The agent can suggest a change and explain its reason, but cannot approve its own request.
+
+#### Session and ownership model
+
+- Establish an application buyer identity only after validating the configured World authentication result on the backend and binding it to the initiating browser flow. Confirm the current Agent Pass protocol and supported identity claims against its official documentation before implementation; do not assume IDKit and Agent Pass share request or token formats.
+- Issue a revocable, expiring application session using an opaque server-side identifier and an `HttpOnly`, `Secure`, appropriately `SameSite` cookie. Rotate the session after authentication, protect state-changing requests against CSRF, and revoke it on logout. Any loopback HTTP exception must be explicit and limited to local development.
+- Keep the authenticated buyer identity separate from the existing conversation `sessionId`. A negotiation session, browser-supplied UUID, lease ID or run ID is not an authentication credential.
+- Persist buyer ownership for leases, runs, answers, budget reservations and payment records. Enforce it on every private read, SSE subscription, export, reconciliation request and mutation. Buyer A must never read or control Buyer B's resources by changing an identifier.
+- Keep scheduled execution bound to the durable lease authorization, rather than requiring a continuously open browser session. Browser logout ends interactive access; pausing or cancelling the lease explicitly stops future execution.
+- Keep World tokens, session secrets, identity proofs and buyer-to-wallet mappings out of browser-readable storage, Parquet and public Arkiv records. Record only safe action outcomes and correlation references through the existing event sink.
+
+#### Human approval moments
+
+| Action | Required behavior |
+| --- | --- |
+| View own spending and receipts | Valid application session and server-enforced ownership |
+| Activate a paid lease | Show exact terms; obtain action-bound human verification and the existing explicit spending authorization |
+| Raise per-request or total budget, extend expiry, or broaden permitted providers | Create a pending policy revision; obtain fresh human verification and explicit authorization for the exact revision |
+| Lower limits, pause or cancel | Allow the authenticated owner to reduce authority without an unnecessary fresh-verification barrier; preserve existing settlement and reservation rules |
+| Execute a routine scheduled run | No fresh human prompt; enforce the existing authorized policy, remaining budget, expiry and provider restrictions |
+| Agent suggests a budget increase | Display the proposed change and rationale; retain existing limits until the owner approves |
+
+An increase can be prompted by insufficient remaining budget, a higher provider quote, a longer monitoring period or a changed service requirement. Display current and proposed limits, currency, scope, expiry and maximum exposure before requesting approval. Never present a recommendation as mandatory or silently authorize it.
+
+#### Approval state and atomic enforcement
+
+1. The backend creates a pending approval bound to the authenticated buyer, lease ID, current policy revision, exact proposed policy hash, purpose, nonce and short expiry.
+2. The buyer completes the official Agent Pass flow. Validate its result server-side, including the documented issuer, audience, freshness and flow-binding protections supported by that protocol. A client success callback is never sufficient authorization.
+3. Re-read lease ownership, current revision, settled spend and outstanding reservations. Apply the exact approved revision and consume the approval atomically. Reject stale revisions, altered terms, expired requests and replayed approvals.
+4. Denial, cancellation, unavailable verification or expiry leaves the existing policy unchanged. No new payment or higher spending authority follows from an unsuccessful approval.
+5. A reduced total cap must account for settled and reserved amounts. A budget increase does not add wallet funds, reset spent totals, release uncertain payments or bypass operator caps.
+
+Suggested application routes are `GET /api/auth/session`, `POST /api/auth/logout`, backend-owned World authentication start/callback routes, `POST /api/leases/:id/budget-requests`, and an owner-only budget approval completion route. These are application conventions, not claimed World SDK endpoints. Proposed session, ownership and approval schemas belong in `@data-leases/contracts` and require both contributors' review before freezing.
+
+#### Implementation split and acceptance evidence
+
+- **Backend slice:** buyer/session storage, ownership middleware, World adapter, durable approval records, atomic policy revision and replay protection in `apps/agent-gateway`. Keep it isolated from CRE measurement logic and A2A negotiation.
+- **UI slice:** signed-in buyer state, own spending overview, current-versus-proposed budget review, pending/approved/denied/expired states, and a clear pause/cancel control in `apps/web`. Integrate only after the backend authorization contract is agreed.
+- **Tests:** two buyers cannot access each other's resources; changed terms and replayed/expired approvals fail; concurrent revisions cannot overwrite newer limits; cancellation causes no increase or payment; routine authorized runs remain autonomous; logout revokes the session; reservation and payment reconciliation remain intact.
+- **Demo:** sign in, activate a bounded lease, show an autonomous run, request and approve a budget increase, then demonstrate a denied or expired increase leaving the original limit unchanged.
+- **World evidence:** demonstrate the official Agent Pass journey and backend validation, plus the requested integration feedback. The Mumbai prize page currently states that Agent Pass proofs use fake identities: label that environment explicitly and do not claim production proof of humanity. An optional IDKit uniqueness feature, such as one subsidized trial per person, requires separate credential selection and server-side nullifier enforcement.
+
+References checked on 2026-11-07: [World Mumbai prize requirements](https://ethglobal.com/events/mumbai/prizes#world), [Agent Pass documentation](https://auth.world.org/docs), and [IDKit integration and uniqueness enforcement](https://docs.world.org/world-id/idkit/integrate). Agent Pass documentation must be inspected successfully before selecting implementation APIs; the prize page alone does not establish protocol details.
 
 ---
 

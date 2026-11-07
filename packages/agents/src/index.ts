@@ -72,14 +72,17 @@ async function boundedFetch(url: string | URL | Request, init?: RequestInit): Pr
 export function hashTerms(value: NegotiationMessage): string {
  return createHash('sha256').update(JSON.stringify({ providerId: value.fromAgentId, sessionId: value.sessionId, negotiationId: value.negotiationId, runId: value.runId, quoteId: value.quoteId, offerId: value.offerId, priceMinor: value.priceMinor, currency: value.currency, expiresAt: value.expiresAt, questionTemplateId: value.questionTemplateId, evidencePolicyId: value.evidencePolicyId, maxAgeSeconds: value.maxAgeSeconds, deliverySlaSeconds: value.deliverySlaSeconds })).digest('hex');
 }
-export interface ProviderOptions { port: number; providerId: string; askMinor: string; floorMinor: string; strategy?: NegotiationStrategy; payment?:{payTo:string;journal:PaymentJournal}; compute?:ComputeAdapter; utilityRates?:Record<string,{askMinor:string;floorMinor:string}>; answerSource?:(answer:AnswerEnvelope)=>Promise<Pick<AnswerEnvelope,'value'|'sourceBlockNumber'|'sourceBlockHash'|'evidenceRefs'>> }
-export function providerCard(baseUrl: string, providerId: string, computationAvailable=false,linkSourceAvailable=false): AgentCard {
- return AgentCard.fromJSON({ name: providerId, description: linkSourceAvailable?'Unsigned local A2A provider; Ethereum LINK reads, other synthetic demos, optional Hedera exact payments':'DEMO_UNTRUSTED: local A2A research provider; synthetic answers; optional Hedera exact payments', version: '0.1.0', supportedInterfaces: [{ url: `${baseUrl}/a2a`, protocolBinding: 'JSONRPC', protocolVersion: '1.0' }], capabilities: {}, defaultInputModes: [NEGOTIATION_MEDIA_TYPE], defaultOutputModes: [NEGOTIATION_MEDIA_TYPE, ANSWER_MEDIA_TYPE], skills: [{ id: QUESTION_TEMPLATE, name: 'Ethereum lending liquidity', description: 'Mock data negotiation; no live financial data', tags: ['DEMO_UNTRUSTED'] }, ...DEMO_SCENARIOS.filter(s=>!s.retired&&(s.operation!=='COMPUTE'||computationAvailable)).map(scenario => ({ id: scenario.questionTemplateId, name: scenario.title, description: linkSourceAvailable&&scenario.questionTemplateId==='ERC20_TOKEN_METADATA'?'Read Ethereum LINK decimals at an explicit recent block; provider identity is unsigned.':scenario.description, tags: linkSourceAvailable&&scenario.questionTemplateId==='ERC20_TOKEN_METADATA'?['UNTRUSTED_UNSIGNED','ETHEREUM_RPC']:['DEMO_UNTRUSTED', 'SYNTHETIC'] }))] });
+export interface ProviderOptions {profile?:{displayName:string;description:string;style:string;compute:{provider:string;model:string;available:boolean}};allowUnpaidQuotes?:boolean;sourceTemplates?:readonly string[]; liveOnly?:boolean; signAnswer?:(answer:AnswerEnvelope)=>string; port: number; providerId: string; askMinor: string; floorMinor: string; strategy?: NegotiationStrategy; payment?:{payTo:string;journal:PaymentJournal}; compute?:ComputeAdapter; utilityRates?:Record<string,{askMinor:string;floorMinor:string}>; answerSource?:(answer:AnswerEnvelope)=>Promise<Pick<AnswerEnvelope,'value'|'sourceBlockNumber'|'sourceBlockHash'|'evidenceRefs'>> }
+export function providerCard(baseUrl: string, providerId: string, computationAvailable=false,linkSourceAvailable=false,liveOnly=false,sourceTemplates:readonly string[]=[]): AgentCard {
+ return AgentCard.fromJSON({ name: providerId, description: liveOnly?'Live public Ethereum metrics and model computation':linkSourceAvailable?'Unsigned local A2A provider; Ethereum LINK reads, other synthetic demos, optional Hedera exact payments':'DEMO_UNTRUSTED: local A2A research provider; synthetic answers; optional Hedera exact payments', version: '0.1.0', supportedInterfaces: [{ url: `${baseUrl}/a2a`, protocolBinding: 'JSONRPC', protocolVersion: '1.0' }], capabilities: {}, defaultInputModes: [NEGOTIATION_MEDIA_TYPE], defaultOutputModes: [NEGOTIATION_MEDIA_TYPE, ANSWER_MEDIA_TYPE], skills: [...(!liveOnly?[{ id: QUESTION_TEMPLATE, name: 'Ethereum lending liquidity', description: 'Mock data negotiation; no live financial data', tags: ['DEMO_UNTRUSTED'] }]:[]), ...DEMO_SCENARIOS.filter(s=>!s.retired&&(s.operation!=='COMPUTE'||computationAvailable)&&(!liveOnly||(((s.questionTemplateId==='ERC20_TOKEN_METADATA'||sourceTemplates.includes(s.questionTemplateId))&&linkSourceAvailable)||(s.operation==='COMPUTE'&&computationAvailable)))).map(scenario => ({ id: scenario.questionTemplateId, name: scenario.title, description: linkSourceAvailable&&(scenario.questionTemplateId==='ERC20_TOKEN_METADATA'||sourceTemplates.includes(scenario.questionTemplateId))?(liveOnly?'Read the advertised public Ethereum metric at an explicit block; answers carry provider signatures.':'Read the advertised public Ethereum metric at an explicit block; provider identity is unsigned.'):scenario.description, tags: linkSourceAvailable&&(scenario.questionTemplateId==='ERC20_TOKEN_METADATA'||sourceTemplates.includes(scenario.questionTemplateId))?(liveOnly?['SIGNED_PROVIDER','ETHEREUM_RPC']:['UNTRUSTED_UNSIGNED','ETHEREUM_RPC']):liveOnly?['SIGNED_PROVIDER','MODEL_COMPUTATION']:['DEMO_UNTRUSTED', 'SYNTHETIC'] }))] });
 }
 export async function startProvider(options: ProviderOptions) {
+ if(options.liveOnly&&!options.signAnswer)throw new Error('PROVIDER_SIGNING_REQUIRED');
  const ask = BigInt(MinorUnitsSchema.parse(options.askMinor));
  const floor = BigInt(MinorUnitsSchema.parse(options.floorMinor));
  if (floor > ask) throw new Error('FLOOR_EXCEEDS_ASK');
+ const rateFor=(id:string)=>{const multiplier=BigInt(scenarioForTemplate(id)?.dataAccess.priceMultiplier??1),rate=options.utilityRates?.[id];const askMinor=MinorUnitsSchema.parse(rate?.askMinor??(ask*multiplier).toString()),floorMinor=MinorUnitsSchema.parse(rate?.floorMinor??(floor*multiplier).toString());if(BigInt(floorMinor)>BigInt(askMinor))throw new Error('FLOOR_EXCEEDS_ASK');return {askMinor,floorMinor};};
+ for(const id of Object.keys(options.utilityRates??{}))rateFor(id);
  const app = express();
  app.use(express.json({ limit: '32kb' }));
  const sessions = new Map<string, NegotiationMessage>();
@@ -89,11 +92,8 @@ export async function startProvider(options: ProviderOptions) {
  const executor: AgentExecutor = {
   async execute(context, bus) {
    const input = payload(context.userMessage);
-   const task=scenarioForTemplate(input.questionTemplateId);const operation=task?.operation;const multiplier=BigInt(task?.dataAccess.priceMultiplier??1);
-   const rate=options.utilityRates?.[input.questionTemplateId];
-   const quotedAsk=MinorUnitsSchema.parse(rate?.askMinor??((ask*multiplier).toString()));
-   const quotedFloor=MinorUnitsSchema.parse(rate?.floorMinor??((floor*multiplier).toString()));
-   if(BigInt(quotedFloor)>BigInt(quotedAsk))throw new Error('FLOOR_EXCEEDS_ASK');
+   const task=scenarioForTemplate(input.questionTemplateId);const operation=task?.operation;
+   const {askMinor:quotedAsk,floorMinor:quotedFloor}=rateFor(input.questionTemplateId);
    const activeAsk=BigInt(quotedAsk),activeFloor=BigInt(quotedFloor);
    const previous = sessions.get(input.negotiationId);
    const requestedMode: unknown = context.request.metadata?.[NEGOTIATION_MODE_METADATA_KEY] ?? (options.strategy ? 'LIVE' : 'MOCK');
@@ -105,7 +105,7 @@ export async function startProvider(options: ProviderOptions) {
    let reasonCode = 'INVALID_TERMS';
    let priceMinor = quotedAsk;
    let aiDecision: StrategyDecision | undefined;
-   const valid = Boolean(input.runId) && input.toAgentId === options.providerId && Boolean(task)&&!task?.retired && !(task?.dataAccess.classification==='PRIVATE'&&input.action==='ACCEPT'&&input.currency!==HEDERA_CURRENCY) && (operation!=='COMPUTE'||Boolean(options.compute)) && (input.currency === 'demo:USD6' || (Boolean(options.payment) && input.currency === HEDERA_CURRENCY)) && input.evidencePolicyId === scenarioForTemplate(input.questionTemplateId)?.evidencePolicyId;
+   const valid = Boolean(input.runId) && input.toAgentId === options.providerId && Boolean(task)&&!task?.retired && (!options.liveOnly||(requestedMode==='LIVE'&&(((task?.questionTemplateId==='ERC20_TOKEN_METADATA'||options.sourceTemplates?.includes(input.questionTemplateId))&&Boolean(options.answerSource))||(task?.operation==='COMPUTE'&&Boolean(options.compute))))) && !(task?.dataAccess.classification==='PRIVATE'&&input.action==='ACCEPT'&&input.currency!==HEDERA_CURRENCY) && (operation!=='COMPUTE'||Boolean(options.compute)) && (input.currency === 'demo:USD6' || ((Boolean(options.payment)||(options.allowUnpaidQuotes&&input.action!=='ACCEPT')) && input.currency === HEDERA_CURRENCY)) && input.evidencePolicyId === scenarioForTemplate(input.questionTemplateId)?.evidencePolicyId;
    const bindingValid = !previous || (previous.fromAgentId === input.toAgentId && previous.toAgentId === input.fromAgentId && previous.sessionId === input.sessionId && previous.runId === input.runId && previous.questionTemplateId === input.questionTemplateId && previous.currency === input.currency && previous.maxAgeSeconds === input.maxAgeSeconds && previous.deliverySlaSeconds === input.deliverySlaSeconds && previous.expiresAt === input.expiresAt);
    if (!modeValid) { action = 'REJECT'; reasonCode = 'INVALID_NEGOTIATION_MODE'; }
    else if (!modeMatches) { action = 'REJECT'; reasonCode = 'NEGOTIATION_MODE_MISMATCH'; }
@@ -136,7 +136,8 @@ export async function startProvider(options: ProviderOptions) {
     const scenario = scenarioForTemplate(input.questionTemplateId)!;
     const computation='computationPrompt' in scenario?ComputationResultSchema.parse(await withinDeadline(()=>options.compute!.generate({messages:[{role:'user',content:scenario.computationPrompt}]}),Date.parse(reply.expiresAt))):undefined;
     let answer = AnswerEnvelopeSchema.parse({ schemaVersion: '1.0.0', sessionId: reply.sessionId, negotiationId: reply.negotiationId, runId: reply.runId, questionTemplateId: reply.questionTemplateId, providerId: options.providerId, acceptedQuoteId: reply.quoteId, deliveredAt: new Date().toISOString(), chainId: scenario.chainId, metric: scenario.metric, value: scenario.value, unit: scenario.unit, methodologyVersion: scenario.methodologyVersion, sourceContract: scenario.sourceContract, evidenceRefs: [`mock:scenario:${scenario.id}`], evidencePolicyId: reply.evidencePolicyId, demoTrustMode: 'UNTRUSTED_MOCK' });
-    if(options.answerSource&&reply.currency===HEDERA_CURRENCY&&answer.questionTemplateId==='ERC20_TOKEN_METADATA'){const source=await options.answerSource(answer);answer=AnswerEnvelopeSchema.parse({...answer,value:source.value,sourceBlockNumber:source.sourceBlockNumber,sourceBlockHash:source.sourceBlockHash,evidenceRefs:source.evidenceRefs,deliveredAt:new Date().toISOString()});}
+    if(options.answerSource&&(options.liveOnly||reply.currency===HEDERA_CURRENCY)&&(answer.questionTemplateId==='ERC20_TOKEN_METADATA'||options.sourceTemplates?.includes(answer.questionTemplateId))){const source=await options.answerSource(answer);answer=AnswerEnvelopeSchema.parse({...answer,value:source.value,sourceBlockNumber:source.sourceBlockNumber,sourceBlockHash:source.sourceBlockHash,evidenceRefs:source.evidenceRefs,deliveredAt:new Date().toISOString()});}
+    if(options.liveOnly){if(!options.signAnswer)throw new Error('PROVIDER_SIGNING_REQUIRED');answer={...answer,demoTrustMode:'SIGNED_PROVIDER'};answer=AnswerEnvelopeSchema.parse({...answer,providerSignature:options.signAnswer(answer)});}
     if(reply.currency===HEDERA_CURRENCY){
      if(!paywall)throw new Error('PAYMENTS_NOT_CONFIGURED');
      const quote:PaymentQuote={runId:reply.runId!,quoteId:reply.quoteId!,termsHash:reply.termsHash!,priceMinor:reply.priceMinor!,currency:reply.currency,expiresAt:reply.expiresAt};paywall.register(quote,answer,computation);
@@ -149,9 +150,29 @@ export async function startProvider(options: ProviderOptions) {
   async cancelTask() { throw new Error('No long-running tasks supported'); }
  };
  // The card is served dynamically after the OS selects an ephemeral port in tests.
- const handler = new DefaultRequestHandler(providerCard('http://127.0.0.1', options.providerId,Boolean(options.compute),Boolean(options.answerSource)), new InMemoryTaskStore(), executor);
- app.get('/.well-known/agent-card.json', (_request, response) => response.json(AgentCard.toJSON(providerCard(baseUrl, options.providerId,Boolean(options.compute),Boolean(options.answerSource)))));
+ const handler = new DefaultRequestHandler(providerCard('http://127.0.0.1', options.providerId,Boolean(options.compute),Boolean(options.answerSource),Boolean(options.liveOnly),options.sourceTemplates), new InMemoryTaskStore(), executor);
+ app.get('/.well-known/agent-card.json', (_request, response) => response.json(AgentCard.toJSON(providerCard(baseUrl, options.providerId,Boolean(options.compute),Boolean(options.answerSource),Boolean(options.liveOnly),options.sourceTemplates))));
+ app.get('/provider-profile',(_request,response)=>{
+  const card=providerCard(baseUrl,options.providerId,Boolean(options.compute),Boolean(options.answerSource),Boolean(options.liveOnly),options.sourceTemplates);
+  response.set('Cache-Control','no-store').json({providerId:options.providerId,displayName:options.profile?.displayName??options.providerId,description:options.profile?.description??card.description,style:options.profile?.style??'BALANCED',compute:options.profile?.compute??{provider:'unconfigured',model:'not-configured',available:Boolean(options.strategy)},paymentReady:Boolean(options.payment),services:card.skills.map(skill=>({questionTemplateId:skill.id,askMinor:rateFor(skill.id).askMinor,currency:HEDERA_CURRENCY,decimals:8}))});
+ });
  app.get('/paid-answers/:runId', async(request,response)=>{try{if(!paywall){response.status(503).json({error:'PAYMENTS_NOT_CONFIGURED'});return;}const result=await paywall.respond(request.params.runId,request.get('PAYMENT-SIGNATURE'));response.set({'Cache-Control':'no-store',...result.headers}).status(result.status).json(result.body);}catch(error){const code=error instanceof Error&&['PAYMENT_QUOTE_EXPIRED','PAYMENT_TERMS_MISMATCH','PAYMENT_PAYLOAD_TOO_LARGE'].includes(error.message)?error.message:'PAYMENT_REQUEST_FAILED';response.status(code==='PAYMENT_QUOTE_EXPIRED'?410:400).json({error:code});}});
+ const publicReads=new Map<string,{at:number;work:Promise<AnswerEnvelope>}>();
+ app.get('/public-observations/:template',async(request,response)=>{
+  const id=request.params.template,scenario=scenarioForTemplate(id);
+  if(!options.answerSource||!options.sourceTemplates?.includes(id)||!scenario||scenario.dataAccess.classification!=='PUBLIC'){response.status(404).json({error:'PUBLIC_SOURCE_UNAVAILABLE'});return;}
+  let pending=publicReads.get(id);
+  if(!pending||Date.now()-pending.at>15000){
+   const work=(async()=>{
+    const reference=AnswerEnvelopeSchema.parse({schemaVersion:'1.0.0',sessionId:randomUUID(),negotiationId:randomUUID(),runId:randomUUID(),questionTemplateId:id,providerId:options.providerId,acceptedQuoteId:randomUUID(),deliveredAt:new Date().toISOString(),chainId:scenario.chainId,metric:scenario.metric,value:'0',unit:scenario.unit,methodologyVersion:scenario.methodologyVersion,sourceContract:scenario.sourceContract,evidenceRefs:[],evidencePolicyId:scenario.evidencePolicyId,demoTrustMode:'UNTRUSTED_MOCK'});
+    const source=await options.answerSource!(reference);
+    const answer={...reference,...source,deliveredAt:new Date().toISOString(),demoTrustMode:options.signAnswer?'SIGNED_PROVIDER' as const:'UNTRUSTED_MOCK' as const};
+    return AnswerEnvelopeSchema.parse({...answer,...(options.signAnswer?{providerSignature:options.signAnswer(answer)}:{})});
+   })();pending={at:Date.now(),work};publicReads.set(id,pending);
+  }
+  try{response.set('Cache-Control','no-store').json({kind:'PUBLIC_SOURCE_OBSERVATION',paymentStatus:'NOT_REQUESTED',verificationStatus:'UNVERIFIED',answer:await pending.work});}
+  catch{publicReads.delete(id);response.status(503).json({error:'PUBLIC_SOURCE_UNAVAILABLE'});}
+ });
  app.use('/a2a', jsonRpcHandler({ requestHandler: handler, userBuilder: UserBuilder.noAuthentication }));
  const server = await new Promise<ReturnType<typeof app.listen>>((resolve, reject) => {
   const instance = app.listen(options.port, '127.0.0.1');
@@ -224,7 +245,7 @@ export async function negotiate(options: BuyerOptions) {
    const answerPart = result.parts.find(part => part.mediaType === ANSWER_MEDIA_TYPE && part.content?.$case === 'data');
    if (!answerPart || answerPart.content?.$case !== 'data') throw new Error('ANSWER_DATA_REQUIRED');
    const answer: AnswerEnvelope = AnswerEnvelopeSchema.parse(answerPart.content.value);
-   if (answer.runId !== runId || answer.sessionId !== request.sessionId || answer.negotiationId !== request.negotiationId || answer.questionTemplateId !== questionTemplateId || answer.providerId !== options.providerId || answer.acceptedQuoteId !== request.quoteId || answer.evidencePolicyId !== request.evidencePolicyId || answer.chainId !== scenario.chainId || answer.metric !== scenario.metric || answer.unit !== scenario.unit || answer.methodologyVersion !== scenario.methodologyVersion || answer.sourceContract !== scenario.sourceContract || answer.demoTrustMode !== 'UNTRUSTED_MOCK') throw new Error('ANSWER_BINDING_MISMATCH');
+   if (answer.runId !== runId || answer.sessionId !== request.sessionId || answer.negotiationId !== request.negotiationId || answer.questionTemplateId !== questionTemplateId || answer.providerId !== options.providerId || answer.acceptedQuoteId !== request.quoteId || answer.evidencePolicyId !== request.evidencePolicyId || answer.chainId !== scenario.chainId || answer.metric !== scenario.metric || answer.unit !== scenario.unit || answer.methodologyVersion !== scenario.methodologyVersion || answer.sourceContract !== scenario.sourceContract) throw new Error('ANSWER_BINDING_MISMATCH');
    const computationPart=result.parts.find(p=>p.mediaType==='application/vnd.data-leases.computation+json;v=1');
    const computation=computationPart?.content?.$case==='data'?ComputationResultSchema.parse(computationPart.content.value):undefined;
    if(scenario.operation==='COMPUTE'&&!computation)throw new Error('COMPUTATION_RESULT_REQUIRED');
@@ -252,3 +273,7 @@ export * from './scenarios.js';
 export * from './strategy.js';
 
 export * from './payments.js';
+export {PROVIDER_PROFILES,providerPrefix,providerRecipient,providerComputeEnvironment,providerRates} from './provider-profiles.js';
+export type {SellerStyle} from './provider-profiles.js';
+export {PublicProviderProfileSchema} from './provider-profiles.js';
+export type {PublicProviderProfile} from './provider-profiles.js';

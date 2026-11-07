@@ -7,7 +7,9 @@
     ".": "./src/index.ts",
     "./policy": "./src/policy.ts",
     "./digest": "./src/digest.ts",
-    "./policy-v2": "./src/policy-v2.ts"
+    "./policy-v2": "./src/policy-v2.ts",
+    "./services": "./src/service-policy.ts",
+    "./read-plans": "./src/read-plans.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

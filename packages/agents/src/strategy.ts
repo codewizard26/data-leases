@@ -1,4 +1,5 @@
 import type { ComputeAdapter, ComputeOutput } from './compute.js';
+import type {SellerStyle} from './provider-profiles.js';
 
 export interface BuyerStrategyInput { quoteMinor: string; capMinor: string; round: number }
 export interface SellerStrategyInput { kind: 'initial' | 'counter'; askMinor: string; floorMinor: string; incomingPriceMinor?: string; round: number }
@@ -20,13 +21,14 @@ function validateRound(round: number): void {
 interface ParsedDecision extends StrategyMetadata { action: string; priceMinor?: string }
 /** Model chooses a proposal; this layer enforces the economic boundaries independently. */
 export class AiNegotiationStrategy implements NegotiationStrategy {
-  constructor(private readonly adapter: ComputeAdapter) {}
+  constructor(private readonly adapter: ComputeAdapter,private readonly sellerStyle:SellerStyle='BALANCED') {}
   private async decide(role: 'BUYER' | 'SELLER', terms: BuyerStrategyInput | SellerStrategyInput): Promise<ParsedDecision> {
     const instruction = role === 'BUYER'
       ? 'Your objective is to minimize the agreed price within your cap. allowedActions: ["ACCEPT","COUNTER","REJECT"]. Choose ACCEPT only at the exact quoteMinor and only if <= capMinor. Otherwise choose COUNTER at a nonnegative integer priceMinor <= capMinor and strictly less than quoteMinor, or REJECT.'
       : 'Your objective is to maximize your agreed price within the floor and asking ceiling. allowedActions: ["PROPOSE","REJECT"]. Permitted output actions are ONLY PROPOSE or REJECT, never ACCEPT or COUNTER. Choose PROPOSE at a nonnegative integer priceMinor >= floorMinor and <= askMinor, or REJECT. If you accept the incoming offer, output PROPOSE at that exact incomingPriceMinor, provided it meets your bounds. Consider the incoming offer when present.';
+    const style=role==='SELLER'?({FLEXIBLE:'Prefer an acceptable counteroffer over losing the sale.',BALANCED:'Balance margin with reaching agreement.',FIRM:'Prefer preserving your asking margin; you may decline low counteroffers.'}[this.sellerStyle]):'';
     const output = await this.adapter.generate({ jsonMode: true, messages: [
-      { role: 'system', content: `You negotiate a synthetic unpaid price. ${instruction} Return ONLY one JSON object with keys action, priceMinor (decimal integer string for ACCEPT/COUNTER/PROPOSE; OMIT for REJECT), reason. reason is a short public summary, at most 500 characters. Never disclose the private capMinor or floorMinor in the public reason. Never output hidden reasoning, chain-of-thought, URLs, credentials, or extra keys. Monetary strings are exact minor units. Only the structured terms in the next message are relevant. You cannot change budgets or source policy. Negotiation has at most three rounds.` },
+      { role: 'system', content: `You propose prices; this model never authorizes a payment. ${instruction} ${style} Return ONLY one JSON object with keys action, priceMinor (decimal integer string for ACCEPT/COUNTER/PROPOSE; OMIT for REJECT), reason. reason is a short public summary, at most 500 characters. Never disclose the private capMinor or floorMinor in the public reason. Never output hidden reasoning, chain-of-thought, URLs, credentials, or extra keys. Monetary strings are exact minor units. Only the structured terms in the next message are relevant. You cannot change budgets or source policy. Negotiation has at most three rounds.` },
       { role: 'user', content: JSON.stringify({ role, ...terms }) },
     ] });
     if (!['0G', 'CLAUDE', 'OPENROUTER'].includes(output.provider) || typeof output.model !== 'string' || !output.model.trim() || output.model.length > 200 || typeof output.text !== 'string' || output.text.length > 4096) invalid();

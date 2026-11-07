@@ -179,3 +179,12 @@ test('public evidence route calls the existing Arkiv query adapter and rejects a
  expect(await (await fetch(server.baseUrl+'/api/evidence/latest')).json()).toEqual({answer:null,receipts:[]});expect(queryLatestAcceptedAnswer).toHaveBeenCalledWith({metric:'ERC20_DECIMALS',maxAgeSeconds:86400});
  expect((await fetch(server.baseUrl+'/api/evidence/latest?metric=arbitrary')).status).toBe(400);expect(queryLatestAcceptedAnswer).toHaveBeenCalledTimes(1);
 });
+
+test('live-only runtime supports CRE simulation while excluding synthetic source and legacy checkout paths',async()=>{
+ vi.stubEnv('PROVIDER_LINK_SOURCE_ENABLED','true');const server=await gateway.startGateway({port:0,liveOnly:true});cleanup.push(server.close);
+ const status=await(await fetch(server.baseUrl+'/api/integrations')).json();expect(status).toMatchObject({liveOnly:true,negotiation:{mode:'LIVE',available:false},verification:{executionMode:'CRE_CLI_SIMULATION',available:true}});expect(status.blockers).not.toContain('LIVE_CRE_NOT_CONFIGURED');
+ const catalog=await(await fetch(server.baseUrl+'/api/templates')).json();expect(catalog.templates.some((t:{questionTemplateId:string})=>t.questionTemplateId==='ERC20_TOKEN_METADATA')).toBe(true);expect(catalog.templates.some((t:{questionTemplateId:string})=>t.questionTemplateId==='AAVE_V3_USDC_AVAILABLE_LIQUIDITY')).toBe(true);expect(catalog.templates.every((t:{synthetic:boolean})=>!t.synthetic)).toBe(true);
+ for(const [path,code] of [['compute','LIVE_ONLY_ENDPOINT_UNAVAILABLE'],['negotiate','LIVE_ONLY_ENDPOINT_UNAVAILABLE'],['payments/checkout','LIVE_ONLY_ENDPOINT_UNAVAILABLE']] as const){const response=await fetch(server.baseUrl+'/api/'+path,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});expect(response.status).toBe(503);expect(await response.json()).toEqual({error:code});}
+ const blocked=await fetch(server.baseUrl+'/api/preview',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({questionTemplateId:'PRIVATE_AAVE_POSITION_HEALTH_FACTOR'})});expect(blocked.status).toBe(409);
+ const services=await(await fetch(server.baseUrl+'/api/services/status')).json();expect(services.services.find((task:{questionTemplateId:string})=>task.questionTemplateId==='PRIVATE_AAVE_POSITION_HEALTH_FACTOR')).toMatchObject({available:false,reason:'PRIVATE_SOURCE_NOT_CONFIGURED'});
+});

@@ -52,3 +52,18 @@ test('private verification publishes hash-only receipts and refuses even an expl
  await expect(client.publishAnswerReceipt(request.verificationId,{allowValue:true,licenseReference:'https://license.example/public'})).rejects.toThrow('PRIVATE_ANSWER_REDISTRIBUTION_FORBIDDEN');expect(transport.creates).toBe(0);
  const entity=await client.publishAnswerReceipt(request.verificationId);expect(entity.record).toMatchObject({dataClassification:'PRIVATE',redistributionAllowed:false,source:{chainId:'eip155:1'}});expect(entity.record).not.toHaveProperty('value');if(entity.record.entityType==='AnswerReceipt'){expect(entity.record.source.contract).toBeUndefined();expect(AnswerReceiptSchema.safeParse({...entity.record,value:'18',redistributionAllowed:true,licenseReference:'https://license.example/public'}).success).toBe(false);expect(AnswerReceiptSchema.safeParse({...entity.record,source:{...entity.record.source,contract:request.answer.sourceContract}}).success).toBe(false);}
 });
+
+test('service-specific accepted Aave receipts publish, but omitted required checks still fail closed',async()=>{
+ const {evaluateServiceVerification,readPlan}=await import('@data-leases/cre-adapter');
+ const task='AAVE_V3_USDC_AVAILABLE_LIQUIDITY',plan=readPlan(task)!;
+ const input=VerificationRequestSchema.parse({...request,questionTemplateId:task,answer:{...request.answer,questionTemplateId:task,metric:'aave_v3.usdc.available_liquidity',unit:'USDC_RAW_6_DECIMALS',methodologyVersion:'synthetic-demo-v1',evidencePolicyId:'demo-policy-v1',sourceContract:undefined,deliveredAt:now},requestedAt:now,policy:{...request.policy,policyId:'demo-policy-v1',allowedMetricIds:['aave_v3.usdc.available_liquidity']}});
+ const observation={chainId:'eip155:1',contract:plan.contract,blockNumber:input.answer.sourceBlockNumber!,blockHash:input.answer.sourceBlockHash!,blockTimestamp:now,value:input.answer.value};
+ let verified=evaluateServiceVerification(input,{evm:observation,http:observation},'CRE_CLI_SIMULATION',now);
+ expect(verified.status).toBe('ACCEPTED');expect(verified.checks.find(check=>check.checkId==='SOURCE_CONTRACT_ALLOWED')?.status).toBe('PASS');
+ const transport=new FakeTransport(),journal=new PublicationJournal(':memory:');
+ const registry:VerificationRegistry={async submit(){return {verificationId:input.verificationId,state:'COMPLETED'};},async getRequest(){return input;},async getResult(){return verified;}};
+ const client=new ArkivEvidenceClient({transport,journal,verification:registry,clock:()=>new Date(now)});cleanups.push(()=>client.close());
+ const published=await client.publishAnswerReceipt(input.verificationId);expect(published.record).toMatchObject({questionTemplateId:task,status:'ACCEPTED'});
+ verified={...verified,checks:verified.checks.filter(check=>check.checkId!=='SOURCE_CONTRACT_ALLOWED')};
+ await expect(client.publishAnswerReceipt(input.verificationId)).rejects.toThrow('UNSUPPORTED_ACCEPTED_VERIFICATION');
+});
