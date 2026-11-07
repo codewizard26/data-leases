@@ -72,8 +72,10 @@ vercel deploy --prod
 - The `.env` file stays on the VM only (`chmod 600`). Never commit it or copy it into the image;
   `.dockerignore` excludes it and compose loads it at runtime via `env_file`.
 - Use testnet-only keys (Hedera, Arkiv); never reuse real-funds keys on a public server.
-- `WORLD_REDIRECT_URI=https://data-leases.vercel.app/api/auth/world/callback` and register
-  that URL with your World client. Keep `WORLD_ALLOW_LOCAL_HTTP=false`.
+- Privy: `PRIVY_APP_ID`, `PRIVY_VERIFICATION_KEY` (or `PRIVY_APP_SECRET`), and
+  `WEB_ORIGINS=https://data-leases.vercel.app`. Keep `BUYER_ALLOW_LOCAL_HTTP=false`.
+  In the Privy dashboard add `https://data-leases.vercel.app` as an allowed domain, and set
+  `NEXT_PUBLIC_PRIVY_APP_ID` in Vercel (then redeploy).
 - `EVIDENCE_LAYER_ENABLED` / CRE: the image does not include the `cre` CLI or Bun. Local
   CRE CLI simulation still needs to run on a machine with them installed; keep the UI
   evidence state honest (`MOCK` / `CRE_CLI_SIMULATION`) accordingly.

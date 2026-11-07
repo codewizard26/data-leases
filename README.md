@@ -69,7 +69,7 @@ Choose an eligible published provider, then open **Mandate**. Set:
 - **Expiry:** when authorization ends.
 - **Freshness:** how recent the source must be.
 
-Save the mandate. If World approval is enabled, complete the required authorization. The mandate pins the selected provider; another agent cannot silently replace it.
+Save the mandate, then approve its exact terms in **My dashboard** while signed in with Privy. The mandate pins the selected provider; another agent cannot silently replace it.
 
 **Saving a mandate starts no work and makes no payment.** Opening the dashboard or changing services also starts no new source read or model inference. Reading existing metadata and history is separate from purchasing an answer.
 
@@ -134,7 +134,7 @@ Reuse the saved mandate for another explicit request. Each request uses the sele
 | Chainlink CRE CLI | Check supported answers against reference evidence | Reject a mismatching value or mark missing evidence inconclusive |
 | Arkiv | Store and query public offers and eligible evidence records | Compare providers and browse service history |
 | SQLite + Parquet | Keep durable operational state and inspectable event history | Recover run state and inspect recorded agent exchanges |
-| Optional World approval | Gate buyer authorization when enabled | Require the configured identity approval before a mandate becomes usable |
+| Privy sign-in | Identify the buyer and confirm spending approvals | Require the signed-in owner to approve the exact policy before a mandate becomes usable |
 
 Different models or prices do not establish independent data ownership or better accuracy. Agents reading the same public chain still share that underlying source. Keys stay server-side; models cannot override payment or verification rules.
 
@@ -184,22 +184,24 @@ Shared contracts remain subject to both contributors' review before freezing. Co
 
 Additional implementation references: [verification and Arkiv](docs/VERIFICATION_ARKIV.md), [service catalog](docs/SERVICE_CATALOG.md), [CRE handoff](docs/CRE_HANDOFF.md), [AI negotiation](docs/AI_NEGOTIATION.md), [existing recurring leases](docs/RECURRING_LEASES.md), and [developer handoff](docs/DEVELOPER1_IMPLEMENTATION.md). Some older handoff documents describe earlier milestones; the workflow above describes the current dashboard.
 
-## World Agent Pass buyer workspace
+## Privy buyer workspace
 
-The dashboard's **Account** view supports World sign-in, owned leases, committed spending, and exact policy approval review. The backend uses OIDC authorization code flow with S256 PKCE, discovery, RS256 signature validation, issuer/audience/nonce checks, fresh authentication, and server-side flow binding. Sandbox identities are test identities; they do not establish production proof of humanity.
+The dashboard's **My dashboard** view is user-centric: sign in with Privy (email, Google or wallet; Privy creates an embedded Ethereum wallet for users without one) to see your own mandates, committed spending, purchases and approval requests. Signed-in buyers land on it by default.
 
-Register a client using the [official Agent Pass OIDC guide](https://auth.world.org/docs/guides/oidc). Set `WORLD_CLIENT_ID`, `WORLD_CLIENT_SECRET`, `WORLD_ISSUER`, and the exact registered `WORLD_REDIRECT_URI` in your private environment. Set `WORLD_AUTH_ENABLED=true`. For loopback development only, explicitly set `WORLD_ALLOW_LOCAL_HTTP=true` and use `http://127.0.0.1:3001/api/auth/world/callback`. Use the same browser hostname throughout. Production requires HTTPS and secure cookies. Restart `pnpm dev`, open `/dashboard`, then choose **Account** and sign in.
+How it works: the browser obtains a Privy access token and sends it once as `Authorization: Bearer` to `POST /api/auth/privy`. The gateway verifies it server-side with the official `@privy-io/node` SDK (ES256, issuer `privy.io`, audience = your app ID) and exchanges it for an opaque, hashed, expiring, revocable application session in an HttpOnly cookie with a CSRF token. The Privy DID is stored only as a hash and mapped to an opaque `buyerId`; tokens, emails and wallet addresses are never written to events, Parquet or Arkiv. Email and wallet are displayed client-side from the Privy SDK only.
 
-Enabled mode protects lease and run reads, mutations, event streams, and Parquet history with buyer ownership checks. Session tokens are opaque, hashed in private SQLite storage, expiring, revocable, and carried in HttpOnly cookies. Authenticated mutations require CSRF tokens. Existing unowned demo resources are not adopted by a newly signed-in buyer. Legacy direct checkout is disabled in protected mode; paid execution uses an owned lease.
+Setup: create an app at [dashboard.privy.io](https://dashboard.privy.io), enable email, Google and wallet login, and add allowed domains (`https://data-leases.vercel.app` and `http://localhost:3001`). Set `NEXT_PUBLIC_PRIVY_APP_ID` for the web app, and `PRIVY_APP_ID` plus `PRIVY_VERIFICATION_KEY` (or `PRIVY_APP_SECRET`) for the gateway. For production also set `WEB_ORIGINS=https://data-leases.vercel.app`. For loopback development only, set `BUYER_ALLOW_LOCAL_HTTP=true` and open the console at `http://localhost:3001`.
 
-Authorizing a lease first creates a pending approval without enabling payment. Review its exact terms in Account, confirm, and complete fresh World authentication. Only the verified callback can atomically activate or revise the policy. Denial, expired approvals, altered bindings, replay, and stale revisions cannot increase authority. Lowering limits, pausing, and cancelling require the owner session without another World flow. Scheduled runs retain durable policy authorization after browser logout; logout closes interactive access. Settled and unresolved payment commitments remain counted after revisions.
+Enabled mode protects lease and run reads, mutations, event streams, and Parquet history with buyer ownership checks. Existing unowned demo resources are not adopted by a newly signed-in buyer. Legacy direct checkout is disabled in protected mode; paid execution uses an owned lease.
 
-Direct library callers can explicitly disable buyer authentication for isolated local tests. The runnable gateway always enables buyer protection. Authentication and approval tests use signed synthetic OIDC fixtures; a real registered-client browser journey and sponsor submission evidence remain pending. Buyer schemas remain proposed pending contributor signoff.
+Authorizing a lease first creates a pending approval without enabling payment. Review its exact terms in My dashboard, tick the confirmation and approve. Approval requires the owner session, CSRF, a currently valid Privy token for the same identity, and the unchanged policy hash; only then is the policy activated or revised atomically. This is explicit account confirmation, not proof of personhood. Denial, expired approvals, changed terms, replay, other identities and stale revisions cannot increase authority. Lowering limits, pausing and cancelling require only the owner session. Scheduled runs retain durable policy authorization after browser logout. Settled and unresolved payment commitments remain counted after revisions.
+
+Direct library callers can explicitly disable buyer authentication for isolated local tests. The runnable gateway always enables buyer protection. Authentication and approval tests use an injected fixture verifier; a live Privy login requires your app credentials. Buyer schemas remain proposed pending contributor signoff.
 
 ## Public and private dashboards
 
 **Public dashboard** queries Arkiv for data-type usage, published entities, confirmed testnet spending, purchase counts, and spending by receipt publication date. It deduplicates shared bundle transactions before summing exact tinybars. These are bounded, unexpired records for configured providers, not lifetime network revenue. No USD conversion or personal spending attribution is inferred.
 
-**My dashboard** uses the World-authenticated buyer session to show owned reports, settled spending, unresolved reservations, and lease approvals. Full reports and buyer-to-World mappings remain in private gateway storage. Entity statistics and public spend do not include buyer identities. Hedera transfers and existing public Arkiv payment references remain inspectable; this feature does not make blockchain transactions private.
+**My dashboard** uses the Privy-authenticated buyer session to show owned reports, settled spending, unresolved reservations, and lease approvals. Full reports and buyer identity mappings remain in private gateway storage. Entity statistics and public spend do not include buyer identities. Hedera transfers and existing public Arkiv payment references remain inspectable; this feature does not make blockchain transactions private.
 
-The runnable gateway requires authentication for buyer resources even before World credentials are supplied. Add the registered `WORLD_CLIENT_ID`, `WORLD_CLIENT_SECRET`, issuer, and exact callback URL from `.env.example` before signing in. For loopback development, explicitly set `WORLD_ALLOW_LOCAL_HTTP=true`. Public analytics and listings stay readable without sign-in. World sign-in and action approvals have been tested with signed OIDC fixtures; a live registered-client journey still requires your credentials.
+The runnable gateway requires authentication for buyer resources even before Privy credentials are supplied. Public analytics and listings stay readable without sign-in.

@@ -44,7 +44,9 @@ function Tabs({id,items,value,onChange}:{id:string;items:string[];value:string;o
 export default function Dashboard(){
  const [pendingApproval,setPendingApproval]=useState<BuyerApproval>();
  const [page,setPage]=useState<Page>('Services'),[serviceTab,setServiceTab]=useState('Overview'),[activityTab,setActivityTab]=useState('Result');
- useEffect(()=>{if(new URLSearchParams(window.location.search).get('view')==='account')setPage('Account');},[]);
+ useEffect(()=>{const view=new URLSearchParams(window.location.search).get('view');if(view==='account'){setPage('Account');return;}if(view)return;
+  // User-centric default: a signed-in buyer lands on their own dashboard.
+  void fetch('/api/auth/session',{cache:'no-store',credentials:'same-origin'}).then(response=>response.ok?response.json():undefined).then((session?:{authenticated?:boolean})=>{if(session?.authenticated)setPage(current=>current==='Services'?'Account':current);}).catch(()=>undefined);},[]);
  const [templates,setTemplates]=useState<Template[]>([]),[question,setQuestion]=useState('AAVE_V3_USDC_AVAILABLE_LIQUIDITY'),[search,setSearch]=useState(''),[classification,setClassification]=useState('ALL');
  const [analysisPersona,setAnalysisPersona]=useState<AnalysisPersona|undefined>('LIQUIDITY_PROVIDER');
  const [measurementIds,setMeasurementIds]=useState<string[]>([...ANALYSIS_REQUIREMENTS.LIQUIDITY_PROVIDER]);
@@ -90,7 +92,7 @@ export default function Dashboard(){
   requestInFlight.current=true;setBusy(true);const leaseId=crypto.randomUUID();
   try{
    const authorization=await api<{requiresHumanApproval?:boolean;approval?:BuyerApproval}>('leases',{leaseId,questionTemplateId:measurementIds[0],measurementIds:[...measurementIds].sort(),analysisPersona,currency:'hedera:testnet/HBAR',providerIds:[selectedSeller.providerId],perRequestTinybars:price,totalTinybars:totalBudget,expiresAt:new Date(expiresAt).toISOString(),maxAgeSeconds:freshness,maxRounds:rounds,paymentsAuthorized:true});
-   if(authorization.requiresHumanApproval){setPendingApproval(authorization.approval);setPage('Account');setNotice('Mandate awaits your World approval. No request or payment has started.');return;}
+   if(authorization.requiresHumanApproval){setPendingApproval(authorization.approval);setPage('Account');setNotice('Mandate awaits your approval in My dashboard. No request or payment has started.');return;}
    setAuthorizedLeaseId(leaseId);setMandates((await api<{mandates:Mandate[]}>('mandates')).mandates);setNotice('Mandate saved for '+selectedSeller.displayName+'. Request an answer when you need it. No payment made.');
   }catch(error){setNotice((error as Error).message+' Check saved mandates before creating another.');}
   finally{requestInFlight.current=false;setBusy(false);}

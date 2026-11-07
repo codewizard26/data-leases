@@ -4,7 +4,7 @@ Run `pnpm install` and `pnpm dev` with your ignored local `.env` configured. Ope
 
 1. Choose **Aave USDC available liquidity** and check the measurements needed. Try liquidity plus supply APY.
 2. In **Compare agents**, review the itemized fixed totals and published versus draft labels. Choose one available Arkiv-listed provider. Six local profiles exist; profiles without merchant recipients cannot sell.
-3. In **Mandate**, set a per-request ceiling, total cap, expiry and freshness requirement. Save the mandate. If World approval is enabled, complete its required authorization before proceeding.
+3. In **Mandate**, set a per-request ceiling, total cap, expiry and freshness requirement. Save the mandate. Approve its exact terms in My dashboard while signed in with Privy before proceeding.
 4. Confirm saving created no new run or payment. Click **Request selected answers · pay with x402** once. Follow fixed-price confirmation and the single payment attempt.
 5. Inspect each delivered answer and its independent CRE result and Arkiv publication separately. CRE uses local CLI simulation, not live DON execution. Only eligible accepted results can publish receipts.
 6. Request another answer with the same mandate. Confirm the same provider is used and remaining budget decreases by settled spend. Inspect **Service history** for public records.
