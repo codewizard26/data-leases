@@ -1,3 +1,4 @@
+import {RESEARCH_TASKS} from '@data-leases/contracts';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -59,7 +60,7 @@ test('catalog exposes scoped services and hides retired tasks and all paid value
   const response = await fetch(`${server.baseUrl}/api/templates`);
   expect(response.status).toBe(200);
   const body = await response.json();
-  expect(body.templates).toHaveLength(25);expect(body.templates.some((item:{operation:string})=>item.operation==='WRITE')).toBe(false);expect(body.templates.every((item:Record<string,unknown>)=>!('value' in item)&&!('computationPrompt' in item))).toBe(true);expect(body.templates.filter((item:{dataAccess:{classification:string}})=>item.dataAccess.classification==='PRIVATE')).toHaveLength(10);
+  expect(body.templates).toHaveLength(25+RESEARCH_TASKS.length);expect(body.templates.some((item:{operation:string})=>item.operation==='WRITE')).toBe(false);expect(body.templates.every((item:Record<string,unknown>)=>!('value' in item)&&!('computationPrompt' in item))).toBe(true);expect(body.templates.filter((item:{dataAccess:{classification:string}})=>item.dataAccess.classification==='PRIVATE')).toHaveLength(10);
   expect(body.templates.every((item: {demoTrustMode: string}) => item.demoTrustMode === 'UNTRUSTED_MOCK')).toBe(true);
 });
 test('rejects unknown question template before contacting providers', async () => {

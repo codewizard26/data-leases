@@ -1,4 +1,4 @@
-import {FixedBundleQuoteSchema,type FixedBundleQuote} from '@data-leases/contracts';
+import {FixedBundleQuoteSchema,type FixedBundleQuote,type PaidAnalysisBrief,PaidAnalysisBriefSchema} from '@data-leases/contracts';
 import {bundleTermsHash,bundlePaymentQuote} from '@data-leases/agents';
 import {eventDisclosure} from './data-access.js';
 import {EventEmitter} from 'node:events';
@@ -11,9 +11,9 @@ import {EventStore} from '@data-leases/event-store';
 import {LeaseStore} from './lease-store.js';
 export const RunInputSchema=z.object({runId:z.string().uuid(),leaseId:z.string().uuid(),mode:z.enum(['DIRECT_URL','LOCAL_REGISTRY','ARKIV','HYBRID']),directCardUrl:z.string().url().optional()}).strict();
 export interface ProviderConnection {providerId:string;origin:string;payTo:string}
-export interface PaymentResult {answer:AnswerEnvelope;answers?:AnswerEnvelope[];computation?:ComputationResult;payment:{network:string;transaction:string;payer?:string;success:boolean}}
+export interface PaymentResult {answer:AnswerEnvelope;answers?:AnswerEnvelope[];analysisBrief?:PaidAnalysisBrief;computation?:ComputationResult;payment:{network:string;transaction:string;payer?:string;success:boolean}}
 export interface BundleMeasurement {answer:AnswerEnvelope;verificationId:string;verification?:VerificationResult;publicationStatus:string;receipt?:RunReceiptReference;error?:string}
-export interface RunState {bundleQuote?:FixedBundleQuote;measurements?:BundleMeasurement[];settledAt?:string;runId:string;sessionId:string;leaseId:string;status:string;paymentStatus:string;deliveryStatus:string;verificationStatus:string;publicationStatus:string;providers?:DiscoveredAgent[];quote?:Readonly<NegotiationMessage>;resourceUrl?:string;payment?:PaymentResult['payment'];hashScanUrl?:string;answer?:AnswerEnvelope;computation?:ComputationResult;verification?:VerificationResult;receipts?:RunReceiptReference[];error?:string}
+export interface RunState {analysisBrief?:PaidAnalysisBrief;bundleQuote?:FixedBundleQuote;measurements?:BundleMeasurement[];settledAt?:string;runId:string;sessionId:string;leaseId:string;status:string;paymentStatus:string;deliveryStatus:string;verificationStatus:string;publicationStatus:string;providers?:DiscoveredAgent[];quote?:Readonly<NegotiationMessage>;resourceUrl?:string;payment?:PaymentResult['payment'];hashScanUrl?:string;answer?:AnswerEnvelope;computation?:ComputationResult;verification?:VerificationResult;receipts?:RunReceiptReference[];error?:string}
 export class RunOrchestrator {
  readonly events=new EventEmitter();
  private publicationInFlight=new Map<string,Promise<void>>();
@@ -103,14 +103,15 @@ export class RunOrchestrator {
     const found=await this.discover({schemaVersion:'1.0.0',sessionId:run.sessionId,mode:input.mode,directCardUrl:input.directCardUrl,questionTemplateId:id,maxPriceMinor:policy.perRequestTinybars,currency:policy.currency,maxAgeSeconds:policy.maxAgeSeconds,requestedAt:new Date().toISOString()});
     if(!found.some(p=>p.providerId===connection.providerId))throw Error('BUNDLE_ITEM_NOT_LISTED');
    }
-   const response=await fetch(connection.origin+'/fixed-quotes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:run.runId,measurementIds:ids,maxAgeSeconds:policy.maxAgeSeconds}),redirect:'error',signal:AbortSignal.timeout(10000)});
+   const response=await fetch(connection.origin+'/fixed-quotes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:run.runId,measurementIds:ids,analysisPersona:policy.analysisPersona,maxAgeSeconds:policy.maxAgeSeconds}),redirect:'error',signal:AbortSignal.timeout(10000)});
    if(!response.ok)throw Error('FIXED_QUOTE_UNAVAILABLE');
    const {quote:raw}=await response.json() as {quote:unknown},quote=FixedBundleQuoteSchema.parse(raw);
-   if(quote.runId!==run.runId||quote.providerId!==connection.providerId||quote.payTo!==connection.payTo||quote.maxAgeSeconds!==policy.maxAgeSeconds||quote.termsHash!==bundleTermsHash(quote)||JSON.stringify(quote.items.map(i=>i.questionTemplateId))!==JSON.stringify(ids)||Date.parse(quote.expiresAt)<=Date.now()||Date.parse(quote.expiresAt)>Date.now()+185000)throw Error('QUOTE_TERMS_MISMATCH');
-   await this.config.validateFixedQuote?.(quote);run.bundleQuote=quote;this.save(run);this.emit(run,'QUOTE','FIXED_PRICE_CONFIRMED',{quote,notice:'Fixed item prices. No bargaining or model inference.'},connection.providerId);
+   if(quote.analysis?.persona!==policy.analysisPersona||quote.runId!==run.runId||quote.providerId!==connection.providerId||quote.payTo!==connection.payTo||quote.maxAgeSeconds!==policy.maxAgeSeconds||quote.termsHash!==bundleTermsHash(quote)||JSON.stringify(quote.items.map(i=>i.questionTemplateId))!==JSON.stringify(ids)||Date.parse(quote.expiresAt)<=Date.now()||Date.parse(quote.expiresAt)>Date.now()+185000)throw Error('QUOTE_TERMS_MISMATCH');
+   await this.config.validateFixedQuote?.(quote);run.bundleQuote=quote;this.save(run);this.emit(run,'QUOTE','FIXED_PRICE_CONFIRMED',{quote,notice:quote.analysis?'Fixed source and analysis prices. One inference on explicit preparation.':'Fixed item prices. No bargaining or model inference.'},connection.providerId);
    this.config.leases.reserve(run.leaseId,run.runId,connection.providerId,quote.priceMinor);reserved=true;
+   run.status=quote.analysis?'ANALYZING':'PREPARING';this.save(run);this.emit(run,'ANSWER_REQUESTED',quote.analysis?'ANALYSIS_STARTED':'PREPARING_SOURCES',{persona:quote.analysis?.persona,measurementIds:ids},connection.providerId);
    const prepared=await fetch(connection.origin+'/fixed-quotes/prepare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(quote),redirect:'error',signal:AbortSignal.timeout(120000)});
-   if(!prepared.ok)throw Error('BUNDLE_SOURCE_UNAVAILABLE');
+   if(!prepared.ok)throw Error(quote.analysis?'ANALYSIS_PREPARATION_FAILED':'BUNDLE_SOURCE_UNAVAILABLE');
    const current=this.config.leases.get(run.leaseId);if(!current.active||Date.parse(current.policy.expiresAt)<=Date.now())throw Error('LEASE_EXPIRED_OR_CANCELLED');
    run.status='PAYING';run.paymentStatus='IN_PROGRESS';this.save(run);submitted=true;this.emit(run,'ANSWER_REQUESTED','PAYMENT_ATTEMPT',{amountTinybars:quote.priceMinor,measurementIds:ids},connection.providerId);
    const paid=await this.config.payment({quote:bundlePaymentQuote(quote),url:connection.origin+'/paid-answers/'+encodeURIComponent(run.runId),payTo:connection.payTo});
@@ -122,6 +123,7 @@ export class RunOrchestrator {
     const age=Date.now()-Date.parse(answer.deliveredAt);if(age< -5000||age>policy.maxAgeSeconds*1000)throw Error('STALE_ANSWER');
     run.measurements.push({answer,verificationId:randomUUID(),publicationStatus:'NOT_REQUESTED'});
    }
+   if(quote.analysis){run.analysisBrief=PaidAnalysisBriefSchema.parse(paid.analysisBrief);if(run.analysisBrief.persona!==quote.analysis.persona||run.analysisBrief.runId!==run.runId)throw Error('ANALYSIS_BINDING_MISMATCH');}
    run.answer=answers.find(a=>a.questionTemplateId===policy.questionTemplateId)??answers[0];run.deliveryStatus='DELIVERED';run.status='VERIFICATION_PENDING';run.verificationStatus='PENDING';this.save(run);
    this.emit(run,'ANSWER_DELIVERED','BUNDLE_DELIVERED',{answers,payment:run.payment},connection.providerId);
    for(const item of run.measurements){const request=VerificationRequestSchema.parse({schemaVersion:'1.0.0',verificationId:item.verificationId,runId:run.runId,sessionId:run.sessionId,providerId:connection.providerId,questionTemplateId:item.answer.questionTemplateId,answer:item.answer,policy:{policyId:item.answer.evidencePolicyId,version:'1.0.0',allowedChainIds:[item.answer.chainId],allowedMetricIds:[item.answer.metric],maxAgeSeconds:policy.maxAgeSeconds,maxAbsDeltaRaw:'0'},requestedAt:new Date().toISOString()});

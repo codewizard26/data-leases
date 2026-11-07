@@ -1,3 +1,4 @@
+import {RESEARCH_TASKS} from '@data-leases/contracts';
 /** Verification metadata only. Catalog parity is checked against provider services in tests. */
 export const SERVICE_POLICIES = [
   {
@@ -250,4 +251,4 @@ export const SERVICE_POLICIES = [
     "chainId": "eip155:1",
     "private": true
   }
-] as const;
+,...RESEARCH_TASKS.map(task=>({questionTemplateId:task.id,metric:task.id.toLowerCase()+'.delivered_reports',unit:'GENERATED_REPORTS',methodologyVersion:'public-api-research-v1',evidencePolicyId:'external-research-v1',operation:'COMPUTE' as const,chainId:'offchain:public-apis',private:false}))] as const;

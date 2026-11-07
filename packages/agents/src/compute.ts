@@ -3,6 +3,7 @@ export {ClaudeComputeAdapter} from './claude-compute.js';
 /** Server-only inference boundary. Generated text never authorizes economic actions. */
 export interface ComputeInput {
   jsonMode?: boolean;
+  jsonSchema?:Record<string,unknown>;
   messages: ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }>;
 }
 export interface ComputeOutput {

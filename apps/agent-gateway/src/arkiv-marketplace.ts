@@ -7,14 +7,15 @@ export type MarketplaceQueries=Pick<ArkivEvidenceClient,'queryProviderOffers'|'q
 export async function registryOffers(connections:readonly Connection[],questionTemplateId:string,registry:Pick<MarketplaceQueries,'queryProviderOffers'>){
  const [entities,profiles]=await Promise.all([registry.queryProviderOffers({questionTemplateId,currency:HEDERA_CURRENCY,limit:100}),providerOffers(connections,questionTemplateId)]);
  const latest=new Map<string,{entity:StoredEntity;record:ReturnType<typeof ProviderOfferSchema.parse>}>();
- for(const entity of [...entities].sort((a,b)=>b.record.createdAt.localeCompare(a.record.createdAt))){
+ const score=(entity:StoredEntity)=>{const record=ProviderOfferSchema.parse(entity.record),profile=profiles.find(p=>p.providerId===record.providerId);return Number(profile?.askMinor===record.priceMinor)+2*Number(profile?.analysis?.priceMinor===record.analysisPriceMinor);};
+ for(const entity of [...entities].sort((a,b)=>b.record.createdAt.localeCompare(a.record.createdAt)||score(b)-score(a))){
   const record=ProviderOfferSchema.parse(entity.record),connection=connections.find(connection=>connection.providerId===record.providerId);
   if(!connection||record.questionTemplateId!==questionTemplateId||record.currency!==HEDERA_CURRENCY||record.status!=='ACTIVE'||Date.parse(record.expiresAt)<=Date.now()||Date.parse(record.createdAt)>Date.now()||record.cardUrl!==connection.origin+'/.well-known/agent-card.json'||record.a2aEndpoint!==connection.origin+'/a2a'||record.payTo!==providerRecipient(record.providerId))continue;
   if(!latest.has(record.providerId))latest.set(record.providerId,{entity,record});
  }
  return [...latest.values()].map(({entity,record})=>{
   const profile=profiles.find(profile=>profile.providerId===record.providerId)!;
-  return {...profile,available:profile.available&&profile.askMinor===record.priceMinor,status:profile.askMinor!==record.priceMinor?'RATE_CHANGED':profile.status,askMinor:record.priceMinor,currency:record.currency,decimals:record.decimals,paymentReady:Boolean(profile.paymentReady),source:'ARKIV' as const,entityKey:entity.entityKey,publisher:entity.owner,expiresAt:record.expiresAt,registryUrl:'https://rabdi.explorer.arkiv.network/entity/'+entity.entityKey};
+  return {...profile,available:profile.available&&profile.askMinor===record.priceMinor,status:profile.askMinor!==record.priceMinor?'RATE_CHANGED':profile.status,askMinor:record.priceMinor,currency:record.currency,decimals:record.decimals,paymentReady:Boolean(profile.paymentReady),analysis:profile.analysis&&record.analysisPriceMinor===profile.analysis.priceMinor?{...profile.analysis,source:'ARKIV' as const}:undefined,analysisPriceMinor:record.analysisPriceMinor,source:'ARKIV' as const,entityKey:entity.entityKey,publisher:entity.owner,expiresAt:record.expiresAt,registryUrl:'https://rabdi.explorer.arkiv.network/entity/'+entity.entityKey};
  }).sort((a,b)=>BigInt(a.askMinor)<BigInt(b.askMinor)?-1:BigInt(a.askMinor)>BigInt(b.askMinor)?1:a.providerId.localeCompare(b.providerId));
 }
 /** Explicit operator registration of fixed, locally configured sellers; never starts inference or payment. */
@@ -26,11 +27,12 @@ export async function syncRegistryOffers(connections:readonly Connection[],quest
   const connection=connections.find(connection=>connection.providerId===profile.providerId)!,payTo=providerRecipient(profile.providerId);
   if(!profile.available||!profile.askMinor||!profile.paymentReady||!payTo){skipped.push({providerId:profile.providerId,reason:!payTo?'MERCHANT_NOT_CONFIGURED':'SERVICE_UNAVAILABLE'});continue;}
   const cardUrl=connection.origin+'/.well-known/agent-card.json',a2aEndpoint=connection.origin+'/a2a';
-  const prior=existing.find(entity=>{const record=ProviderOfferSchema.parse(entity.record);return record.providerId===profile.providerId&&record.questionTemplateId===questionTemplateId&&record.status==='ACTIVE'&&record.priceMinor===profile.askMinor&&record.currency===HEDERA_CURRENCY&&record.payTo===payTo&&record.cardUrl===cardUrl&&record.a2aEndpoint===a2aEndpoint&&Date.parse(record.expiresAt)>Date.now()+300000;});
+  const prior=existing.find(entity=>{const record=ProviderOfferSchema.parse(entity.record);return record.providerId===profile.providerId&&record.questionTemplateId===questionTemplateId&&record.status==='ACTIVE'&&record.priceMinor===profile.askMinor&&record.analysisPriceMinor===(questionTemplateId.startsWith('AAVE_V3_USDC_')&&profile.analysis?.available?profile.analysis.priceMinor:undefined)&&record.currency===HEDERA_CURRENCY&&record.payTo===payTo&&record.cardUrl===cardUrl&&record.a2aEndpoint===a2aEndpoint&&Date.parse(record.expiresAt)>Date.now()+300000;});
   if(prior){published.push({providerId:profile.providerId,entityKey:prior.entityKey,reused:true});continue;}
   const bucket=Math.floor(Date.now()/3600000)*3600000,createdAt=new Date(bucket).toISOString(),expiresAt=new Date(bucket+86400000).toISOString();
-  const revision=createHash('sha256').update(JSON.stringify({providerId:profile.providerId,questionTemplateId,price:profile.askMinor,payTo,cardUrl,createdAt})).digest('hex').slice(0,24);
-  const entity=await registry.publishProviderOffer({offerId:profile.providerId+':'+revision,providerId:profile.providerId,questionTemplateId,metric:task.metric,supportedMetrics:[task.metric],priceMinor:profile.askMinor,currency:HEDERA_CURRENCY,asset:'0.0.0',decimals:8,paymentNetwork:'hedera:testnet',payTo,evidencePolicyId:task.evidencePolicyId,cardUrl,a2aEndpoint,status:'ACTIVE',reachability:'LOCAL_DEVELOPMENT',createdAt,expiresAt});
+  const analysisPriceMinor=questionTemplateId.startsWith('AAVE_V3_USDC_')&&profile.analysis?.available?profile.analysis.priceMinor:undefined;
+  const revision=createHash('sha256').update(JSON.stringify({analysisPriceMinor,providerId:profile.providerId,questionTemplateId,price:profile.askMinor,payTo,cardUrl,createdAt})).digest('hex').slice(0,24);
+  const entity=await registry.publishProviderOffer({offerId:profile.providerId+':'+revision,providerId:profile.providerId,questionTemplateId,metric:task.metric,supportedMetrics:[task.metric],priceMinor:profile.askMinor,...(analysisPriceMinor?{analysisPriceMinor}:{}),currency:HEDERA_CURRENCY,asset:'0.0.0',decimals:8,paymentNetwork:'hedera:testnet',payTo,evidencePolicyId:task.evidencePolicyId,cardUrl,a2aEndpoint,status:'ACTIVE',reachability:'LOCAL_DEVELOPMENT',createdAt,expiresAt});
   published.push({providerId:profile.providerId,entityKey:entity.entityKey,reused:false});
  }
  return {published,skipped};

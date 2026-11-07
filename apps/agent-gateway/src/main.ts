@@ -8,7 +8,7 @@ const evidence = process.env.EVIDENCE_LAYER_ENABLED === 'true' ? createEvidenceL
 let gateway: Awaited<ReturnType<typeof startGateway>>;
 try {
  await evidence?.rawVerification.resumePending();
- gateway = await startGateway({liveOnly,negotiationStrategy:strategy,port:Number(process.env.WEB_PORT ?? '3000'),verificationClient:evidence?.verification,verificationStatus:evidence?.rawVerification.getStatus.bind(evidence.rawVerification),arkivClient:evidence?.arkiv,evidenceQueries:evidence?.arkiv});
+ gateway = await startGateway({buyerAuthEnabled:true,liveOnly,negotiationStrategy:strategy,port:Number(process.env.WEB_PORT ?? '3000'),verificationClient:evidence?.verification,verificationStatus:evidence?.rawVerification.getStatus.bind(evidence.rawVerification),arkivClient:evidence?.arkiv,evidenceQueries:evidence?.arkiv});
  evidence?.start();
 } catch { await evidence?.close(); throw new Error('GATEWAY_STARTUP_FAILED'); }
 console.log(`Data Leases local console: ${gateway.baseUrl} · Arkiv=${Boolean(evidence)} · CRE=local CLI simulation`);

@@ -29,6 +29,7 @@ test('comparison reads published Arkiv offers, registration is explicit and repe
  expect((await sync()).status).toBe(200);expect(f.registry.publishProviderOffer).toHaveBeenCalledTimes(2);
  const response=await fetch(f.server.baseUrl+'/api/providers?questionTemplateId='+template).then(response=>response.json());expect(response.source).toBe('ARKIV');expect(response.providers.map((provider:{askMinor:string})=>provider.askMinor)).toEqual(['500','700']);expect(response.providers.every((provider:{entityKey:string})=>provider.entityKey.startsWith('0x'))).toBe(true);
  const history=await fetch(f.server.baseUrl+'/api/registry/history?questionTemplateId='+template).then(response=>response.json());expect(history.source).toBe('ARKIV');expect(history.entries).toHaveLength(2);expect(history.entries[0].entityType).toBe('ProviderOffer');
+ const analytics=await fetch(f.server.baseUrl+'/api/public/analytics').then(response=>response.json());expect(analytics).toMatchObject({source:'ARKIV',entities:2,offers:2,confirmedPurchases:0,totalTinybars:'0'});
  const changed={...f.entities[0]!,record:{...f.entities[0]!.record,priceMinor:'499'}} as StoredEntity;
  const offers=await registryOffers(f.providers.map((provider,index)=>({providerId:'provider-'+(index?'b':'a'),origin:provider.baseUrl})),template,{async queryProviderOffers(){return [changed];}});
  expect(offers[0]).toMatchObject({askMinor:'499',available:false,status:'RATE_CHANGED'});

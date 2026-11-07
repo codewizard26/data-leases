@@ -179,3 +179,23 @@ Supported public read plans can fetch real chain data. Private and subjective se
 Shared contracts remain subject to both contributors' review before freezing. Contributors should read [CLAUDE.md](CLAUDE.md), [SKILLS.md](SKILLS.md), [AGENTS.md](AGENTS.md) and the [integration contract](docs/INTEGRATION_CONTRACT.md).
 
 Additional implementation references: [verification and Arkiv](docs/VERIFICATION_ARKIV.md), [service catalog](docs/SERVICE_CATALOG.md), [CRE handoff](docs/CRE_HANDOFF.md), [AI negotiation](docs/AI_NEGOTIATION.md), [existing recurring leases](docs/RECURRING_LEASES.md), and [developer handoff](docs/DEVELOPER1_IMPLEMENTATION.md). Some older handoff documents describe earlier milestones; the workflow above describes the current dashboard.
+
+## World Agent Pass buyer workspace
+
+The dashboard's **Account** view supports World sign-in, owned leases, committed spending, and exact policy approval review. The backend uses OIDC authorization code flow with S256 PKCE, discovery, RS256 signature validation, issuer/audience/nonce checks, fresh authentication, and server-side flow binding. Sandbox identities are test identities; they do not establish production proof of humanity.
+
+Register a client using the [official Agent Pass OIDC guide](https://auth.world.org/docs/guides/oidc). Set `WORLD_CLIENT_ID`, `WORLD_CLIENT_SECRET`, `WORLD_ISSUER`, and the exact registered `WORLD_REDIRECT_URI` in your private environment. Set `WORLD_AUTH_ENABLED=true`. For loopback development only, explicitly set `WORLD_ALLOW_LOCAL_HTTP=true` and use `http://127.0.0.1:3001/api/auth/world/callback`. Use the same browser hostname throughout. Production requires HTTPS and secure cookies. Restart `pnpm dev`, open `/dashboard`, then choose **Account** and sign in.
+
+Enabled mode protects lease and run reads, mutations, event streams, and Parquet history with buyer ownership checks. Session tokens are opaque, hashed in private SQLite storage, expiring, revocable, and carried in HttpOnly cookies. Authenticated mutations require CSRF tokens. Existing unowned demo resources are not adopted by a newly signed-in buyer. Legacy direct checkout is disabled in protected mode; paid execution uses an owned lease.
+
+Authorizing a lease first creates a pending approval without enabling payment. Review its exact terms in Account, confirm, and complete fresh World authentication. Only the verified callback can atomically activate or revise the policy. Denial, expired approvals, altered bindings, replay, and stale revisions cannot increase authority. Lowering limits, pausing, and cancelling require the owner session without another World flow. Scheduled runs retain durable policy authorization after browser logout; logout closes interactive access. Settled and unresolved payment commitments remain counted after revisions.
+
+Direct library callers can explicitly disable buyer authentication for isolated local tests. The runnable gateway always enables buyer protection. Authentication and approval tests use signed synthetic OIDC fixtures; a real registered-client browser journey and sponsor submission evidence remain pending. Buyer schemas remain proposed pending contributor signoff.
+
+## Public and private dashboards
+
+**Public dashboard** queries Arkiv for data-type usage, published entities, confirmed testnet spending, purchase counts, and spending by receipt publication date. It deduplicates shared bundle transactions before summing exact tinybars. These are bounded, unexpired records for configured providers, not lifetime network revenue. No USD conversion or personal spending attribution is inferred.
+
+**My dashboard** uses the World-authenticated buyer session to show owned reports, settled spending, unresolved reservations, and lease approvals. Full reports and buyer-to-World mappings remain in private gateway storage. Entity statistics and public spend do not include buyer identities. Hedera transfers and existing public Arkiv payment references remain inspectable; this feature does not make blockchain transactions private.
+
+The runnable gateway requires authentication for buyer resources even before World credentials are supplied. Add the registered `WORLD_CLIENT_ID`, `WORLD_CLIENT_SECRET`, issuer, and exact callback URL from `.env.example` before signing in. For loopback development, explicitly set `WORLD_ALLOW_LOCAL_HTTP=true`. Public analytics and listings stay readable without sign-in. World sign-in and action approvals have been tested with signed OIDC fixtures; a live registered-client journey still requires your credentials.
